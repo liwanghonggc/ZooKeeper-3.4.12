@@ -202,10 +202,12 @@ public class NIOServerCnxn extends ServerCnxn {
             }
         }
 
+        // 为0说明读取结束了
         if (incomingBuffer.remaining() == 0) { // have we read length bytes?
             packetReceived();
             incomingBuffer.flip();
             if (!initialized) {
+                // 如果是首次connectRequest
                 readConnectRequest();
             } else {
                 readRequest();
@@ -252,9 +254,12 @@ public class NIOServerCnxn extends ServerCnxn {
                 }
                 if (incomingBuffer.remaining() == 0) {
                     boolean isPayload;
+                    // 初始时incomingBuffer就是lenBuffer, 相等说明是一个新的请求消息
                     if (incomingBuffer == lenBuffer) { // start of next request
                         incomingBuffer.flip();
+                        // 读长度
                         isPayload = readLength(k);
+                        // 清空Buffer
                         incomingBuffer.clear();
                     } else {
                         // continuation
@@ -976,6 +981,7 @@ public class NIOServerCnxn extends ServerCnxn {
         if (!isZKServerRunning()) {
             throw new IOException("ZooKeeperServer not running");
         }
+        // 读完之后声明一个长度为len的incomingBuffer
         incomingBuffer = ByteBuffer.allocate(len);
         return true;
     }

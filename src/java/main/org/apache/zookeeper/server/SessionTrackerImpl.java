@@ -48,15 +48,29 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
      */
     HashMap<Long, SessionImpl> sessionsById = new HashMap<Long, SessionImpl>();
 
+    /**
+     *
+     */
     HashMap<Long, SessionSet> sessionSets = new HashMap<Long, SessionSet>();
 
     /**
      * sessionsWithTimeout, 根据不同的会话ID管理每个会话的超时时间
      */
     ConcurrentHashMap<Long, Integer> sessionsWithTimeout;
+
+    /**
+     * 下一个SessionId
+     */
     long nextSessionId = 0;
+
+    /**
+     *
+     */
     long nextExpirationTime;
 
+    /**
+     * 间隔时间
+     */
     int expirationInterval;
 
     public static class SessionImpl implements Session {
@@ -97,6 +111,9 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
         HashSet<SessionImpl> sessions = new HashSet<SessionImpl>();
     }
 
+    /**
+     * 会话过期用的
+     */
     SessionExpirer expirer;
 
     private long roundToInterval(long time) {
@@ -158,11 +175,13 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
         try {
             while (running) {
                 currentTime = Time.currentElapsedTime();
+                // 还没到就睡一会
                 if (nextExpirationTime > currentTime) {
                     this.wait(nextExpirationTime - currentTime);
                     continue;
                 }
                 SessionSet set;
+                // nextExpirationTime对应的这个时间段的过期Session
                 set = sessionSets.remove(nextExpirationTime);
                 if (set != null) {
                     for (SessionImpl s : set.sessions) {
@@ -172,6 +191,7 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
                         expirer.expire(s);
                     }
                 }
+                // 扫描线程每次增加一个间隔时间, 扫描看这个时间段有没有要处理的过期的Session
                 nextExpirationTime += expirationInterval;
             }
         } catch (InterruptedException e) {
@@ -192,11 +212,14 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
         if (s == null || s.isClosing()) {
             return false;
         }
+
+        // 计算过期时间
         long expireTime = roundToInterval(Time.currentElapsedTime() + timeout);
         if (s.tickTime >= expireTime) {
             // Nothing needs to be done
             return true;
         }
+
         SessionSet set = sessionSets.get(s.tickTime);
         if (set != null) {
             set.sessions.remove(s);
@@ -257,6 +280,8 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
 
     synchronized public void addSession(long id, int sessionTimeout) {
         sessionsWithTimeout.put(id, sessionTimeout);
+
+        // 没有的话, 构造一个Session加进去
         if (sessionsById.get(id) == null) {
             SessionImpl s = new SessionImpl(id, sessionTimeout, 0);
             sessionsById.put(id, s);

@@ -126,9 +126,13 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
 
     private final AtomicInteger requestsInProcess = new AtomicInteger(0);
     final List<ChangeRecord> outstandingChanges = new ArrayList<ChangeRecord>();
-    // this data structure must be accessed under the outstandingChanges lock
-    final HashMap<String, ChangeRecord> outstandingChangesForPath =
-        new HashMap<String, ChangeRecord>();
+
+    /**
+     * this data structure must be accessed under the outstandingChanges lock
+     * 存放要变更的节点的信息
+     * 如创建子节点时, 父节点的cversion要变, 需要把父节点加到这个集合, 后面FinalRequestProcessor会用
+     */
+    final HashMap<String, ChangeRecord> outstandingChangesForPath = new HashMap<String, ChangeRecord>();
     
     private ServerCnxnFactory serverCnxnFactory;
 
@@ -284,6 +288,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         }
         
         // Clean up dead sessions
+        // 清理过期会话
         LinkedList<Long> deadSessions = new LinkedList<Long>();
         for (Long session : zkDb.getSessions()) {
             if (zkDb.getSessionWithTimeOuts().get(session) == null) {
@@ -397,13 +402,13 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         }
     }
     
-    public void startdata() 
-    throws IOException, InterruptedException {
+    public void startdata() throws IOException, InterruptedException {
         //check to see if zkDb is not null
         if (zkDb == null) {
             zkDb = new ZKDatabase(this.txnLogFactory);
         }  
         if (!zkDb.isInitialized()) {
+            // 加载数据
             loadData();
         }
     }
@@ -425,6 +430,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
              */
             createSessionTracker();
         }
+        // 启动会话管理器
         startSessionTracker();
 
         // 设置请求处理链
@@ -761,9 +767,12 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             }
         }
         try {
+            // 会话激活
             touch(si.cnxn);
+            // 校验是否是有效消息
             boolean validpacket = Request.isValid(si.type);
             if (validpacket) {
+                // PreRequestProcessor
                 firstProcessor.processRequest(si);
                 if (si.cnxn != null) {
                     incInProcess();
@@ -980,6 +989,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         InputStream bais = new ByteBufferInputStream(incomingBuffer);
         BinaryInputArchive bia = BinaryInputArchive.getArchive(bais);
         RequestHeader h = new RequestHeader();
+
+        // 反序列化header
         h.deserialize(bia, "header");
         // Through the magic of byte buffers, txn will not be
         // pointing
@@ -1034,6 +1045,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                 return;
             }
             else {
+                // 普通的走到这里
                 Request si = new Request(cnxn, cnxn.getSessionId(), h.getXid(),
                   h.getType(), incomingBuffer, cnxn.getAuthInfo());
                 si.setOwner(ServerCnxn.me);
@@ -1089,6 +1101,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         ProcessTxnResult rc;
         int opCode = hdr.getType();
         long sessionId = hdr.getClientId();
+        // 更新内存DataTree数据
         rc = getZKDatabase().processTxn(hdr, txn);
         if (opCode == OpCode.createSession) {
             if (txn instanceof CreateSessionTxn) {

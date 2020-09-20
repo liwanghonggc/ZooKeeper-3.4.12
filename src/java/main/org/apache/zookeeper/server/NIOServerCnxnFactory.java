@@ -113,8 +113,10 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
     @Override
     public void startup(ZooKeeperServer zks) throws IOException,
             InterruptedException {
+        // 启动NIO网络服务
         start();
         setZooKeeperServer(zks);
+        // 加载数据
         zks.startdata();
         zks.startup();
     }
@@ -198,8 +200,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                 synchronized (this) {
                     selected = selector.selectedKeys();
                 }
-                ArrayList<SelectionKey> selectedList = new ArrayList<SelectionKey>(
-                        selected);
+                ArrayList<SelectionKey> selectedList = new ArrayList<SelectionKey>(selected);
                 Collections.shuffle(selectedList);
                 for (SelectionKey k : selectedList) {
                     if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {

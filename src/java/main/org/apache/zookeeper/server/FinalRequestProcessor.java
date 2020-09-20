@@ -103,8 +103,9 @@ public class FinalRequestProcessor implements RequestProcessor {
         }
         ProcessTxnResult rc = null;
         synchronized (zks.outstandingChanges) {
-            while (!zks.outstandingChanges.isEmpty()
-                    && zks.outstandingChanges.get(0).zxid <= request.zxid) {
+            // 事务请求才不是空
+            // 刚放进去的节点zxid应该和request.zxid一致
+            while (!zks.outstandingChanges.isEmpty() && zks.outstandingChanges.get(0).zxid <= request.zxid) {
                 ChangeRecord cr = zks.outstandingChanges.remove(0);
                 if (cr.zxid < request.zxid) {
                     LOG.warn("Zxid outstanding "
@@ -112,6 +113,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                             + " is less than current " + request.zxid);
                 }
                 if (zks.outstandingChangesForPath.get(cr.path) == cr) {
+                    // 相等才移除
                     zks.outstandingChangesForPath.remove(cr.path);
                 }
             }
@@ -127,6 +129,7 @@ public class FinalRequestProcessor implements RequestProcessor {
             }
         }
 
+        // 非事务请求hdr也为null
         if (request.hdr != null && request.hdr.getType() == OpCode.closeSession) {
             ServerCnxnFactory scxn = zks.getServerCnxnFactory();
             // this might be possible since
@@ -222,6 +225,7 @@ public class FinalRequestProcessor implements RequestProcessor {
             }
             case OpCode.create: {
                 lastOp = "CREA";
+                // 构造响应信息
                 rsp = new CreateResponse(rc.path);
                 err = Code.get(rc.err);
                 break;
@@ -281,18 +285,21 @@ public class FinalRequestProcessor implements RequestProcessor {
             case OpCode.getData: {
                 lastOp = "GETD";
                 GetDataRequest getDataRequest = new GetDataRequest();
-                ByteBufferInputStream.byteBuffer2Record(request.request,
-                        getDataRequest);
+                ByteBufferInputStream.byteBuffer2Record(request.request, getDataRequest);
+                // 获取GET Data
                 DataNode n = zks.getZKDatabase().getNode(getDataRequest.getPath());
                 if (n == null) {
                     throw new KeeperException.NoNodeException();
                 }
+                // 判断认证信息
                 PrepRequestProcessor.checkACL(zks, zks.getZKDatabase().aclForNode(n),
                         ZooDefs.Perms.READ,
                         request.authInfo);
                 Stat stat = new Stat();
-                byte b[] = zks.getZKDatabase().getData(getDataRequest.getPath(), stat,
-                        getDataRequest.getWatch() ? cnxn : null);
+                // 服务端这边会处理Watcher, 如果有会放进去一个ServerCnxn, 默认是NIO的
+                // 服务器和客户端连接是一对一的, 每个对应一个NIO的ServerCnxn
+                byte b[] = zks.getZKDatabase().getData(getDataRequest.getPath(), stat, getDataRequest.getWatch() ? cnxn : null);
+                // 构造一个响应
                 rsp = new GetDataResponse(b, stat);
                 break;
             }
@@ -386,14 +393,15 @@ public class FinalRequestProcessor implements RequestProcessor {
         }
 
         long lastZxid = zks.getZKDatabase().getDataTreeLastProcessedZxid();
-        ReplyHeader hdr =
-            new ReplyHeader(request.cxid, lastZxid, err.intValue());
+        // 构造消息头
+        ReplyHeader hdr = new ReplyHeader(request.cxid, lastZxid, err.intValue());
 
         zks.serverStats().updateLatency(request.createTime);
         cnxn.updateStatsForResponse(request.cxid, lastZxid, lastOp,
                     request.createTime, Time.currentElapsedTime());
 
         try {
+            // 发送响应
             cnxn.sendResponse(hdr, rsp, "response");
             if (closeSession) {
                 cnxn.sendCloseSession();

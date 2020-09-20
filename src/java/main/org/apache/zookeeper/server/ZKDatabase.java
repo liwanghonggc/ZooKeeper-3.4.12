@@ -214,6 +214,7 @@ public class ZKDatabase {
      * @throws IOException
      */
     public long loadDataBase() throws IOException {
+        // 加载数据
         long zxid = snapLog.restore(dataTree, sessionsWithTimeouts, commitProposalPlaybackListener);
         initialized = true;
         return zxid;
@@ -342,6 +343,7 @@ public class ZKDatabase {
      * datatree/zkdatabase
      */
     public ProcessTxnResult processTxn(TxnHeader hdr, Record txn) {
+        // 更新内存数据
         return dataTree.processTxn(hdr, txn);
     }
 

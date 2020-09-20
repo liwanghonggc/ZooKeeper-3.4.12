@@ -112,6 +112,7 @@ public class SerializeUtils {
 
     public static void deserializeSnapshot(DataTree dt,InputArchive ia,
             Map<Long, Integer> sessions) throws IOException {
+        // 读取文件中会话数量
         int count = ia.readInt("count");
         while (count > 0) {
             long id = ia.readLong("id");
@@ -124,6 +125,7 @@ public class SerializeUtils {
             }
             count--;
         }
+        // DataTree的反序列化
         dt.deserialize(ia, "tree");
     }
 
@@ -131,10 +133,12 @@ public class SerializeUtils {
             Map<Long, Integer> sessions) throws IOException {
         HashMap<Long, Integer> sessSnap = new HashMap<Long, Integer>(sessions);
         oa.writeInt(sessSnap.size(), "count");
+        // SessionId和超时时间
         for (Entry<Long, Integer> entry : sessSnap.entrySet()) {
             oa.writeLong(entry.getKey().longValue(), "id");
             oa.writeInt(entry.getValue().intValue(), "timeout");
         }
+        // DataTree序列化
         dt.serialize(oa, "tree");
     }
 

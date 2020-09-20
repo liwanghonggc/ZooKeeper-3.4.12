@@ -44,9 +44,12 @@ public final class ConnectStringParser {
      * 
      * @throws IllegalArgumentException
      *             for an invalid chroot path.
+     *
+     * connectString形如 localhost:2181, localhost:2182, localhost:2183/user/home
      */
     public ConnectStringParser(String connectString) {
         // parse out chroot, if any
+        // connectString后面可以穿/user/home, 类似每个用户自己的私有目录
         int off = connectString.indexOf('/');
         if (off >= 0) {
             String chrootPath = connectString.substring(off);
@@ -62,6 +65,7 @@ public final class ConnectStringParser {
             this.chrootPath = null;
         }
 
+        // 解析zk地址
         String hostsList[] = connectString.split(",");
         for (String host : hostsList) {
             int port = DEFAULT_PORT;

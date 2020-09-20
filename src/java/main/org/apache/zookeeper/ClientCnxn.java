@@ -268,6 +268,9 @@ public class ClientCnxn {
          */
         Record response;
 
+        /**
+         * 请求信息都是放在ByteBuffer上面
+         */
         ByteBuffer bb;
 
         /** Client's view of the path (may differ due to chroot) **/
@@ -481,8 +484,7 @@ public class ClientCnxn {
         /**
          * 将要触发的事件对象存放在waitingEvents队列中
          */
-        private final LinkedBlockingQueue<Object> waitingEvents =
-            new LinkedBlockingQueue<Object>();
+        private final LinkedBlockingQueue<Object> waitingEvents = new LinkedBlockingQueue<Object>();
 
         /** This is really the queued session state until the event
          * thread actually processes the event and hands it to the watcher.
@@ -499,8 +501,7 @@ public class ClientCnxn {
         }
 
         public void queueEvent(WatchedEvent event) {
-            if (event.getType() == EventType.None
-                    && sessionState == event.getState()) {
+            if (event.getType() == EventType.None && sessionState == event.getState()) {
                 return;
             }
             sessionState = event.getState();
@@ -538,6 +539,7 @@ public class ClientCnxn {
                  if (event == eventOfDeath) {
                     wasKilled = true;
                  } else {
+                     // 处理
                     processEvent(event);
                  }
                  if (wasKilled)
@@ -681,6 +683,7 @@ public class ClientCnxn {
             p.watchRegistration.register(p.replyHeader.getErr());
         }
 
+        // 同步callback为null
         if (p.cb == null) {
             synchronized (p) {
                 p.finished = true;
@@ -781,6 +784,7 @@ public class ClientCnxn {
             ReplyHeader replyHdr = new ReplyHeader();
 
             replyHdr.deserialize(bbia, "header");
+            // -2是Ping
             if (replyHdr.getXid() == -2) {
                 // -2 is the xid for pings
                 if (LOG.isDebugEnabled()) {
@@ -792,6 +796,7 @@ public class ClientCnxn {
                 }
                 return;
             }
+            // -4是认证消息
             if (replyHdr.getXid() == -4) {
                 // -4 is the xid for AuthPacket               
                 if(replyHdr.getErr() == KeeperException.Code.AUTHFAILED.intValue()) {
@@ -805,6 +810,7 @@ public class ClientCnxn {
                 }
                 return;
             }
+            // -1是通知
             if (replyHdr.getXid() == -1) {
                 // -1 means notification
                 if (LOG.isDebugEnabled()) {
@@ -812,6 +818,7 @@ public class ClientCnxn {
                         + Long.toHexString(sessionId));
                 }
                 WatcherEvent event = new WatcherEvent();
+                // 反序列化
                 event.deserialize(bbia, "response");
 
                 // convert from a server path to a client path
@@ -834,6 +841,7 @@ public class ClientCnxn {
                             + Long.toHexString(sessionId));
                 }
 
+                // 添加到eventThread处理的队列中
                 eventThread.queueEvent( we );
                 return;
             }
@@ -849,6 +857,7 @@ public class ClientCnxn {
                 return;
             }
 
+            // 正常业务消息走到这里
             Packet packet;
             synchronized (pendingQueue) {
                 if (pendingQueue.size() == 0) {
@@ -862,6 +871,7 @@ public class ClientCnxn {
              * to the first request!
              */
             try {
+                // 两个消息ID不一致
                 if (packet.requestHeader.getXid() != replyHdr.getXid()) {
                     packet.replyHeader.setErr(
                             KeeperException.Code.CONNECTIONLOSS.intValue());
@@ -881,6 +891,7 @@ public class ClientCnxn {
                     lastZxid = replyHdr.getZxid();
                 }
                 if (packet.response != null && replyHdr.getErr() == 0) {
+                    // 响应消息反序列化
                     packet.response.deserialize(bbia, "response");
                 }
 
@@ -923,8 +934,8 @@ public class ClientCnxn {
                      + ", initiating session");
             isFirstConnect = false;
             long sessId = (seenRwServerBefore) ? sessionId : 0;
-            ConnectRequest conReq = new ConnectRequest(0, lastZxid,
-                    sessionTimeout, sessId, sessionPasswd);
+            // 构造ConnectRequest
+            ConnectRequest conReq = new ConnectRequest(0, lastZxid, sessionTimeout, sessId, sessionPasswd);
             synchronized (outgoingQueue) {
                 // We add backwards since we are pushing into the front
                 // Only send if there's a pending watch
@@ -1064,6 +1075,7 @@ public class ClientCnxn {
             }
             logStartConnect(addr);
 
+            // 连接服务器
             clientCnxnSocket.connect(addr);
         }
 
@@ -1105,12 +1117,15 @@ public class ClientCnxn {
                             serverAddress = rwServerAddress;
                             rwServerAddress = null;
                         } else {
+                            // 获取一个服务端地址
                             serverAddress = hostProvider.next(1000);
                         }
+                        // 连接服务端
                         startConnect(serverAddress);
                         clientCnxnSocket.updateLastSendAndHeard();
                     }
 
+                    // 连接成功
                     if (state.isConnected()) {
                         // determine whether we need to send an AuthFailed event.
                         if (zooKeeperSaslClient != null) {
@@ -1158,9 +1173,11 @@ public class ClientCnxn {
                         LOG.warn(warnInfo);
                         throw new SessionTimeoutException(warnInfo);
                     }
+                    // 会话保活
                     if (state.isConnected()) {
                     	//1000(1 second) is to prevent race condition missing to send the second ping
-                    	//also make sure not to send too many pings when readTimeout is small 
+                    	//also make sure not to send too many pings when readTimeout is small
+                        // 下一个ping的时间
                         int timeToNextPing = readTimeout / 2 - clientCnxnSocket.getIdleSend() - 
                         		((clientCnxnSocket.getIdleSend() > 1000) ? 1000 : 0);
                         //send a ping request either time is due or no packet sent out within MAX_SEND_PING_INTERVAL
@@ -1188,6 +1205,7 @@ public class ClientCnxn {
                         to = Math.min(to, pingRwTimeout - idlePingRwServer);
                     }
 
+                    // 核心
                     clientCnxnSocket.doTransport(to, pendingQueue, outgoingQueue, ClientCnxn.this);
                 } catch (Throwable e) {
                     if (closing) {
@@ -1449,8 +1467,9 @@ public class ClientCnxn {
             Record response, WatchRegistration watchRegistration)
             throws InterruptedException {
         ReplyHeader r = new ReplyHeader();
-        Packet packet = queuePacket(h, r, request, response, null, null, null,
-                    null, watchRegistration);
+        // callback cb为null, 如果有是异步回调, 为null是同步
+        Packet packet = queuePacket(h, r, request, response, null, null, null, null, watchRegistration);
+        // 死循环等待结果
         synchronized (packet) {
             while (!packet.finished) {
                 packet.wait();
@@ -1503,6 +1522,7 @@ public class ClientCnxn {
                 if (h.getType() == OpCode.closeSession) {
                     closing = true;
                 }
+                // new了一个Packet放到outgoingQueue
                 outgoingQueue.add(packet);
             }
         }

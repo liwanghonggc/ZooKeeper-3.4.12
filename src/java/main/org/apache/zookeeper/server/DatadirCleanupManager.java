@@ -50,8 +50,14 @@ public class DatadirCleanupManager {
 
     private final String dataLogDir;
 
+    /**
+     * 保存多少个snapShot文件
+     */
     private final int snapRetainCount;
 
+    /**
+     * 清理频率, 单位小时
+     */
     private final int purgeInterval;
 
     private Timer timer;
@@ -103,7 +109,9 @@ public class DatadirCleanupManager {
         }
 
         timer = new Timer("PurgeTask", true);
+        // 删除任务
         TimerTask task = new PurgeTask(dataLogDir, snapDir, snapRetainCount);
+        // 以固定频率启动删除任务
         timer.scheduleAtFixedRate(task, 0, TimeUnit.HOURS.toMillis(purgeInterval));
 
         purgeTaskStatus = PurgeTaskStatus.STARTED;

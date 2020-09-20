@@ -76,6 +76,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                 incomingBuffer.flip();
                 if (incomingBuffer == lenBuffer) {
                     recvCount++;
+                    // 读取消息的长度
                     readLength();
                 } else if (!initialized) {
                     readConnectResult();
@@ -91,6 +92,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                     updateLastHeard();
                     initialized = true;
                 } else {
+                    // 获取返回结果
                     sendThread.readResponse(incomingBuffer);
                     lenBuffer.clear();
                     incomingBuffer = lenBuffer;
@@ -98,10 +100,12 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                 }
             }
         }
+
+        // 请求放入outGoingQueue里面就是可写了
         if (sockKey.isWritable()) {
             synchronized(outgoingQueue) {
-                Packet p = findSendablePacket(outgoingQueue,
-                        cnxn.sendThread.clientTunneledAuthenticationInProgress());
+                // 从outGoingQueue里面获取Packet
+                Packet p = findSendablePacket(outgoingQueue, cnxn.sendThread.clientTunneledAuthenticationInProgress());
 
                 if (p != null) {
                     updateLastSend();
@@ -115,6 +119,8 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                         p.createBB();
                     }
                     sock.write(p.bb);
+
+                    // 发送完了
                     if (!p.bb.hasRemaining()) {
                         sentCount++;
                         outgoingQueue.removeFirstOccurrence(p);
@@ -122,6 +128,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                                 && p.requestHeader.getType() != OpCode.ping
                                 && p.requestHeader.getType() != OpCode.auth) {
                             synchronized (pendingQueue) {
+                                // 将消息放到pendingQueue里面
                                 pendingQueue.add(p);
                             }
                         }
@@ -282,6 +289,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
     
     @Override
     void connect(InetSocketAddress addr) throws IOException {
+        // 创建Socket
         SocketChannel sock = createSock();
         try {
            registerAndConnect(sock, addr);

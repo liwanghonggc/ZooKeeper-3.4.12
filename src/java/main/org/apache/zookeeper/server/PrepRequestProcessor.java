@@ -157,6 +157,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
 
     ChangeRecord getRecordForPath(String path) throws KeeperException.NoNodeException {
         ChangeRecord lastChange = null;
+        // 如创建子节点时, 父节点的cversion要变, 需要把父节点加到这个集合, 后面FinalRequestProcessor会用
         synchronized (zks.outstandingChanges) {
             lastChange = zks.outstandingChangesForPath.get(path);
             if (lastChange == null) {
@@ -166,6 +167,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                     synchronized(n) {
                         children = n.getChildren();
                     }
+                    // 没有的话新建
                     lastChange = new ChangeRecord(-1, path, n.stat, children.size(),
                             zks.getZKDatabase().aclForNode(n));
                 }
@@ -329,11 +331,12 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     protected void pRequest2Txn(int type, long zxid, Request request, Record record, boolean deserialize)
         throws KeeperException, IOException, RequestProcessorException
     {
-        request.hdr = new TxnHeader(request.sessionId, request.cxid, zxid,
-                                    Time.currentWallTime(), type);
+        // 事务处理给hdr赋值
+        request.hdr = new TxnHeader(request.sessionId, request.cxid, zxid, Time.currentWallTime(), type);
 
         switch (type) {
-            case OpCode.create:                
+            case OpCode.create:
+                // 会话检查
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
                 CreateRequest createRequest = (CreateRequest)record;   
                 if(deserialize)
@@ -345,18 +348,23 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                             Long.toHexString(request.sessionId));
                     throw new KeeperException.BadArgumentsException(path);
                 }
+                // 去除节点重复的ACL权限
                 List<ACL> listACL = removeDuplicates(createRequest.getAcl());
                 if (!fixupACL(request.authInfo, listACL)) {
                     throw new KeeperException.InvalidACLException(path);
                 }
+                // 获取父节点
                 String parentPath = path.substring(0, lastSlash);
+                // 获取父节点信息
                 ChangeRecord parentRecord = getRecordForPath(parentPath);
 
-                checkACL(zks, parentRecord.acl, ZooDefs.Perms.CREATE,
-                        request.authInfo);
+                // 看下是否有父节点下创建子节点的权限
+                checkACL(zks, parentRecord.acl, ZooDefs.Perms.CREATE, request.authInfo);
+
                 int parentCVersion = parentRecord.stat.getCversion();
-                CreateMode createMode =
-                    CreateMode.fromFlag(createRequest.getFlags());
+
+                CreateMode createMode = CreateMode.fromFlag(createRequest.getFlags());
+                // 看下创建的是不是顺序节点, 如果是加上parentCVersion
                 if (createMode.isSequential()) {
                     path = path + String.format(Locale.ENGLISH, "%010d", parentCVersion);
                 }
@@ -368,14 +376,16 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 } catch (KeeperException.NoNodeException e) {
                     // ignore this one
                 }
+                // 如果是临时节点, 是不支持在临时节点下面创建子节点的
                 boolean ephemeralParent = parentRecord.stat.getEphemeralOwner() != 0;
                 if (ephemeralParent) {
                     throw new KeeperException.NoChildrenForEphemeralsException(path);
                 }
+
                 int newCversion = parentRecord.stat.getCversion()+1;
-                request.txn = new CreateTxn(path, createRequest.getData(),
-                        listACL,
-                        createMode.isEphemeral(), newCversion);
+                // 构造CreateTxn
+                request.txn = new CreateTxn(path, createRequest.getData(), listACL, createMode.isEphemeral(), newCversion);
+
                 StatPersisted s = new StatPersisted();
                 if (createMode.isEphemeral()) {
                     s.setEphemeralOwner(request.sessionId);
@@ -383,9 +393,9 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 parentRecord = parentRecord.duplicate(request.hdr.getZxid());
                 parentRecord.childCount++;
                 parentRecord.stat.setCversion(newCversion);
+                // 将父节点和当前节点加入到两个容器中, 后面要用
                 addChangeRecord(parentRecord);
-                addChangeRecord(new ChangeRecord(request.hdr.getZxid(), path, s,
-                        0, listACL));
+                addChangeRecord(new ChangeRecord(request.hdr.getZxid(), path, s, 0, listACL));
                 break;
             case OpCode.delete:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
@@ -476,8 +486,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 // queues up this operation without being the session owner.
                 // this request is the last of the session so it should be ok
                 //zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
-                HashSet<String> es = zks.getZKDatabase()
-                        .getEphemerals(request.sessionId);
+                HashSet<String> es = zks.getZKDatabase().getEphemerals(request.sessionId);
                 synchronized (zks.outstandingChanges) {
                     for (ChangeRecord c : zks.outstandingChanges) {
                         if (c.stat == null) {
@@ -541,6 +550,8 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     protected void pRequest(Request request) throws RequestProcessorException {
         // LOG.info("Prep>>> cxid = " + request.cxid + " type = " +
         // request.type + " id = 0x" + Long.toHexString(request.sessionId));
+        // 用于事务日志处理
+        // 非事务处理和事务处理初始都为null, 事务处理时这两个会被赋值
         request.hdr = null;
         request.txn = null;
         
@@ -653,8 +664,8 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.getChildren2:
             case OpCode.ping:
             case OpCode.setWatches:
-                zks.sessionTracker.checkSession(request.sessionId,
-                        request.getOwner());
+                // 判断session是否存在
+                zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
                 break;
             default:
                 LOG.warn("unknown type " + request.type);
@@ -694,7 +705,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
         }
         request.zxid = zks.getZxid();
         
-        // PrepRequestProcessor预处理器执行完工作后,就轮到ProposalRequestProcessor事物处理器上场了
+        // PrepRequestProcessor预处理器执行完工作后,就轮到SyncRequestProcessor上场了
         nextProcessor.processRequest(request);
     }
 

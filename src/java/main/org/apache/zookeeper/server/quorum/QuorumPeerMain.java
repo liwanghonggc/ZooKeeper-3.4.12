@@ -109,7 +109,7 @@ public class QuorumPeerMain {
         }
 
         // Start and schedule the the purge task
-        // 2) 创建文件清理器
+        // 2) 创建日志文件清理器
         DatadirCleanupManager purgeMgr = new DatadirCleanupManager(config
                 .getDataDir(), config.getDataLogDir(), config
                 .getSnapRetainCount(), config.getPurgeInterval());
@@ -169,9 +169,7 @@ public class QuorumPeerMain {
            * 诸如FileTxnSnapLog 数据持久化类、ServerCnxnFactory类NIO工厂方法等.
            * 这之后还需要配置服务器地址列表、Leader 选举算法、会话超时时间等参数
            */
-          quorumPeer.setTxnFactory(new FileTxnSnapLog(
-                  new File(config.getDataLogDir()),
-                  new File(config.getDataDir())));
+          quorumPeer.setTxnFactory(new FileTxnSnapLog(new File(config.getDataLogDir()), new File(config.getDataDir())));
 
           /**
            * 在 ZooKeeper 集群中,Leader 服务器负责管理集群中其他角色服务器,以及处理客户端的数据变更请求.
@@ -186,12 +184,16 @@ public class QuorumPeerMain {
            * 可以通过在 zoo.cfg 配置文件中使用 electionAlg 参数属性来制定具体要使用的算法类型
            */
           quorumPeer.setElectionType(config.getElectionAlg());
+
+          // 本机启动的序号, 需要配置配置文件
           quorumPeer.setMyid(config.getServerId());
           quorumPeer.setTickTime(config.getTickTime());
           quorumPeer.setInitLimit(config.getInitLimit());
           quorumPeer.setSyncLimit(config.getSyncLimit());
           quorumPeer.setQuorumListenOnAllIPs(config.getQuorumListenOnAllIPs());
           quorumPeer.setCnxnFactory(cnxnFactory);
+
+          // 事务提交过程中验证算法, 默认大多数同意就提交
           quorumPeer.setQuorumVerifier(config.getQuorumVerifier());
           quorumPeer.setClientPortAddress(config.getClientPortAddress());
           quorumPeer.setMinSessionTimeout(config.getMinSessionTimeout());

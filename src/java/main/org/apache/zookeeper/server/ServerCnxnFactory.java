@@ -115,9 +115,10 @@ public abstract class ServerCnxnFactory {
     public abstract void closeAll();
     
     static public ServerCnxnFactory createFactory() throws IOException {
-        String serverCnxnFactoryName =
-            System.getProperty(ZOOKEEPER_SERVER_CNXN_FACTORY);
+        // 如果配置了这个属性, 是选择时NIO服务还是用Netty服务
+        String serverCnxnFactoryName = System.getProperty(ZOOKEEPER_SERVER_CNXN_FACTORY);
         if (serverCnxnFactoryName == null) {
+            // 默认是NIO服务
             serverCnxnFactoryName = NIOServerCnxnFactory.class.getName();
         }
         try {

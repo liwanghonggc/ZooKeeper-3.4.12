@@ -35,13 +35,15 @@ public interface TxnLog {
      * @throws IOException 
      */
     void rollLog() throws IOException;
-    
+
     /**
      * Append a request to the transaction log
      * @param hdr the transaction header
      * @param r the transaction itself
      * returns true iff something appended, otw false 
      * @throws IOException
+     *
+     * 追加日志, TxnHeader消息头、Record消息体
      */
     boolean append(TxnHeader hdr, Record r) throws IOException;
 
@@ -52,6 +54,8 @@ public interface TxnLog {
      * @return returns an iterator to read the 
      * next transaction in the logs.
      * @throws IOException
+     *
+     * 获取zxid开始的事务日志
      */
     TxnIterator read(long zxid) throws IOException;
     
@@ -59,6 +63,8 @@ public interface TxnLog {
      * the last zxid of the logged transactions.
      * @return the last zxid of the logged transactions.
      * @throws IOException
+     *
+     * 获取日志中最新的事务ID
      */
     long getLastLoggedZxid() throws IOException;
     
@@ -66,7 +72,11 @@ public interface TxnLog {
      * truncate the log to get in sync with the 
      * leader.
      * @param zxid the zxid to truncate at.
-     * @throws IOException 
+     * @throws IOException
+     *
+     * 删除大于zxid的事务日志
+     * 主要用于多节点中删除个别节点大于集群中最新zxid, 也就是Leader最新的zxid
+     * 主要用于异常处理
      */
     boolean truncate(long zxid) throws IOException;
     
@@ -78,8 +88,7 @@ public interface TxnLog {
     long getDbId() throws IOException;
     
     /**
-     * commmit the trasaction and make sure
-     * they are persisted
+     * commmit the trasaction and make sure they are persisted
      * @throws IOException
      */
     void commit() throws IOException;
@@ -88,6 +97,7 @@ public interface TxnLog {
      * close the transactions logs
      */
     void close() throws IOException;
+
     /**
      * an iterating interface for reading 
      * transaction logs. 

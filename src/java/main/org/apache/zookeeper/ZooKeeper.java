@@ -130,6 +130,7 @@ public class ZooKeeper {
      * API.
      */
     private static class ZKWatchManager implements ClientWatchManager {
+
         private final Map<String, Set<Watcher>> dataWatches =
             new HashMap<String, Set<Watcher>>();
         private final Map<String, Set<Watcher>> existWatches =
@@ -443,13 +444,16 @@ public class ZooKeeper {
 
         watchManager.defaultWatcher = watcher;
 
-        ConnectStringParser connectStringParser = new ConnectStringParser(
-                connectString);
-        HostProvider hostProvider = new StaticHostProvider(
-                connectStringParser.getServerAddresses());
+        // 解析要连接的zk地址
+        ConnectStringParser connectStringParser = new ConnectStringParser(connectString);
+
+        HostProvider hostProvider = new StaticHostProvider(connectStringParser.getServerAddresses());
+
+
         cnxn = new ClientCnxn(connectStringParser.getChrootPath(),
                 hostProvider, sessionTimeout, this, watchManager,
                 getClientCnxnSocket(), canBeReadOnly);
+
         cnxn.start();
     }
 
@@ -1199,6 +1203,7 @@ public class ZooKeeper {
         // the watch contains the un-chroot path
         WatchRegistration wcb = null;
         if (watcher != null) {
+            // 注册Watcher
             wcb = new DataWatchRegistration(watcher, clientPath);
         }
 
@@ -1208,8 +1213,12 @@ public class ZooKeeper {
         h.setType(ZooDefs.OpCode.getData);
         GetDataRequest request = new GetDataRequest();
         request.setPath(serverPath);
+
+        // watcher不为null时为true
         request.setWatch(watcher != null);
         GetDataResponse response = new GetDataResponse();
+
+        // 提交请求
         ReplyHeader r = cnxn.submitRequest(h, request, response, wcb);
         if (r.getErr() != 0) {
             throw KeeperException.create(KeeperException.Code.get(r.getErr()),
@@ -1833,9 +1842,9 @@ public class ZooKeeper {
     }
 
     private static ClientCnxnSocket getClientCnxnSocket() throws IOException {
-        String clientCnxnSocketName = System
-                .getProperty(ZOOKEEPER_CLIENT_CNXN_SOCKET);
+        String clientCnxnSocketName = System.getProperty(ZOOKEEPER_CLIENT_CNXN_SOCKET);
         if (clientCnxnSocketName == null) {
+            // 没配置默认使用ClientCnxnSocketNIO和服务器交互
             clientCnxnSocketName = ClientCnxnSocketNIO.class.getName();
         }
         try {

@@ -632,6 +632,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     
     @Override
     public synchronized void start() {
+        // 加载数据
         loadDataBase();
         cnxnFactory.start();
 
@@ -644,8 +645,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     }
 
     private void loadDataBase() {
-        File updating = new File(getTxnFactory().getSnapDir(),
-                                 UPDATING_EPOCH_FILENAME);
+        File updating = new File(getTxnFactory().getSnapDir(), UPDATING_EPOCH_FILENAME);
 		try {
             zkDb.loadDataBase();
 

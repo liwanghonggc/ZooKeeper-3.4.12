@@ -580,7 +580,7 @@ public class DataTree {
         }
         synchronized (n) {
             n.copyStat(stat);
-            // watcher不为null时, 注册
+            // watcher不为null时, 注册, 实际放进去的是一个ServerCnxn
             if (watcher != null) {
                 dataWatches.addWatch(path, watcher);
             }

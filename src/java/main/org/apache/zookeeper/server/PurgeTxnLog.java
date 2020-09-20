@@ -72,12 +72,14 @@ public class PurgeTxnLog {
      * @throws IOException
      */
     public static void purge(File dataDir, File snapDir, int num) throws IOException {
+        // 必须保存>=3个snapShot文件
         if (num < 3) {
             throw new IllegalArgumentException(COUNT_ERR_MSG);
         }
 
         FileTxnSnapLog txnLog = new FileTxnSnapLog(dataDir, snapDir);
 
+        // 找出要保存的num个snapShot文件
         List<File> snaps = txnLog.findNRecentSnapshots(num);
         int numSnaps = snaps.size();
         if (numSnaps > 0) {
@@ -87,8 +89,8 @@ public class PurgeTxnLog {
 
     // VisibleForTesting
     static void purgeOlderSnapshots(FileTxnSnapLog txnLog, File snapShot) {
-        final long leastZxidToBeRetain = Util.getZxidFromName(
-                snapShot.getName(), PREFIX_SNAPSHOT);
+        // 需要保存的最后一个文件的zxid, 其他的要清理
+        final long leastZxidToBeRetain = Util.getZxidFromName(snapShot.getName(), PREFIX_SNAPSHOT);
 
         /**
          * We delete all files with a zxid in their name that is less than leastZxidToBeRetain.
@@ -148,6 +150,7 @@ public class PurgeTxnLog {
         }
 
         // remove the old files
+        // files是要删除的
         for(File f: files)
         {
             final String msg = "Removing file: "+

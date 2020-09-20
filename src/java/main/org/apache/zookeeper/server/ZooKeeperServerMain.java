@@ -114,14 +114,13 @@ public class ZooKeeperServerMain {
                     new ZooKeeperServerShutdownHandler(shutdownLatch));
 
             // 2) FileTxnSnapLog 类
-            txnLog = new FileTxnSnapLog(new File(config.dataLogDir), new File(
-                    config.dataDir));
+            txnLog = new FileTxnSnapLog(new File(config.dataLogDir), new File(config.dataDir));
             zkServer.setTxnLogFactory(txnLog);
             zkServer.setTickTime(config.tickTime);
             zkServer.setMinSessionTimeout(config.minSessionTimeout);
             zkServer.setMaxSessionTimeout(config.maxSessionTimeout);
 
-            // 3) ServerCnxnFactory 类创建
+            // 3) ServerCnxnFactory 类创建, 网络服务组件
             cnxnFactory = ServerCnxnFactory.createFactory();
             cnxnFactory.configure(config.getClientPortAddress(),
                     config.getMaxClientCnxns());

@@ -210,6 +210,7 @@ public class QuorumPeerConfig {
             } else if (key.equals("autopurge.purgeInterval")) {
                 purgeInterval = Integer.parseInt(value);
             } else if (key.startsWith("server.")) {
+                // 有server的配置, 说明是集群版
                 int dot = key.indexOf('.');
                 long sid = Long.parseLong(key.substring(dot + 1));
                 String parts[] = splitWithLeadingHostname(value);
