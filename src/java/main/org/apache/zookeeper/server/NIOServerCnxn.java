@@ -211,10 +211,14 @@ public class NIOServerCnxn extends ServerCnxn {
             }
         }
 
-        // 为0说明读取结束了
+
         if (incomingBuffer.remaining() == 0) { // have we read length bytes?
+            // 计数, 增加读到的packet数量
             packetReceived();
+
+            // flip一下接着从里面读取数据
             incomingBuffer.flip();
+
             if (!initialized) {
                 // 如果是首次connectRequest
                 readConnectRequest();
@@ -222,6 +226,8 @@ public class NIOServerCnxn extends ServerCnxn {
                 readRequest();
             }
             lenBuffer.clear();
+
+            // 又置为lenBuffer
             incomingBuffer = lenBuffer;
         }
     }
@@ -274,7 +280,7 @@ public class NIOServerCnxn extends ServerCnxn {
                         // continuation
                         isPayload = true;
                     }
-                    if (isPayload) { // not the case for 4letterword
+                    if (isPayload) { // not the case for 4 letterword
                         readPayload();
                     }
                     else {
@@ -311,8 +317,7 @@ public class NIOServerCnxn extends ServerCnxn {
                              * small to hold everything, nothing will be copied,
                              * so we've got to slice the buffer if it's too big.
                              */
-                            b = (ByteBuffer) b.slice().limit(
-                                    directBuffer.remaining());
+                            b = (ByteBuffer) b.slice().limit(directBuffer.remaining());
                         }
                         /*
                          * put() is going to modify the positions of both
@@ -368,11 +373,9 @@ public class NIOServerCnxn extends ServerCnxn {
                                 && (sk.interestOps() & SelectionKey.OP_READ) == 0) {
                             throw new CloseRequestException("responded to info probe");
                         }
-                        sk.interestOps(sk.interestOps()
-                                & (~SelectionKey.OP_WRITE));
+                        sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
                     } else {
-                        sk.interestOps(sk.interestOps()
-                                | SelectionKey.OP_WRITE);
+                        sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
                     }
                 }
             }

@@ -186,10 +186,10 @@ public class FileTxnSnapLog {
      *
      * 加载过程
      */
-    public long restore(DataTree dt, Map<Long, Integer> sessions,
-                        PlayBackListener listener) throws IOException {
-        // 反序列化一个snapshot文件
+    public long restore(DataTree dt, Map<Long, Integer> sessions, PlayBackListener listener) throws IOException {
+        // 1) 反序列化一个snapshot文件
         snapLog.deserialize(dt, sessions);
+        // 2) 从增量事务日志反序列化
         return fastForwardFromEdits(dt, sessions, listener);
     }
 
@@ -204,18 +204,18 @@ public class FileTxnSnapLog {
      * @return the highest zxid restored.
      * @throws IOException
      */
-    public long fastForwardFromEdits(DataTree dt, Map<Long, Integer> sessions,
-                                     PlayBackListener listener) throws IOException {
+    public long fastForwardFromEdits(DataTree dt, Map<Long, Integer> sessions, PlayBackListener listener) throws IOException {
         FileTxnLog txnLog = new FileTxnLog(dataDir);
+
         // 获取txnLog中大于lastProcessedZxid的迭代器,
         // 看下reed方法
         TxnIterator itr = txnLog.read(dt.lastProcessedZxid + 1);
+
         long highestZxid = dt.lastProcessedZxid;
         TxnHeader hdr;
         try {
             while (true) {
-                // iterator points to 
-                // the first valid txn when initialized
+                // iterator points to the first valid txn when initialized
                 hdr = itr.getHeader();
                 if (hdr == null) {
                     //empty logs 
@@ -227,18 +227,20 @@ public class FileTxnSnapLog {
                             new Object[]{highestZxid, hdr.getZxid(),
                                     hdr.getType()});
                 } else {
+                    // 更新highestZxid为刚刚反序列化出来的hdr的zxid
                     highestZxid = hdr.getZxid();
                 }
                 try {
-                    // 这里
+                    // 根据刚刚序列化得到的hdr和record进行创建节点等操作
                     processTransaction(hdr, dt, sessions, itr.getTxn());
                 } catch (KeeperException.NoNodeException e) {
                     throw new IOException("Failed to process transaction type: " +
                             hdr.getType() + " error: " + e.getMessage(), e);
                 }
 
-                //
+                // 后面分析, TODO
                 listener.onTxnLoaded(hdr, itr.getTxn());
+                // 继续判断有没有下一个
                 if (!itr.next())
                     break;
             }
@@ -259,16 +261,15 @@ public class FileTxnSnapLog {
      * @param sessions the sessions to be restored
      * @param txn the transaction to be applied
      */
-    public void processTransaction(TxnHeader hdr, DataTree dt,
-                                   Map<Long, Integer> sessions, Record txn)
+    public void processTransaction(TxnHeader hdr, DataTree dt, Map<Long, Integer> sessions, Record txn)
             throws KeeperException.NoNodeException {
         ProcessTxnResult rc;
         // 判断消息头类型
         switch (hdr.getType()) {
             case OpCode.createSession:
-                // 创建Session
-                sessions.put(hdr.getClientId(),
-                        ((CreateSessionTxn) txn).getTimeOut());
+                // 维护sessionId和超时时间对应关系
+                sessions.put(hdr.getClientId(), ((CreateSessionTxn) txn).getTimeOut());
+
                 if (LOG.isTraceEnabled()) {
                     ZooTrace.logTraceMessage(LOG, ZooTrace.SESSION_TRACE_MASK,
                             "playLog --- create session in log: 0x"

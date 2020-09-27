@@ -164,7 +164,7 @@ public class Util {
         RandomAccessFile raf = new RandomAccessFile(f, "r");
         try {
             // including the header and the last / bytes
-            // the snapshot should be atleast 10 bytes
+            // the snapshot should be at least 10 bytes
             if (raf.length() < 10) {
                 return false;
             }

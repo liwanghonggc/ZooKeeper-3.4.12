@@ -78,8 +78,7 @@ public class FileSnap implements SnapShot {
      * deserialize a data tree from the most recent snapshot
      * @return the zxid of the snapshot
      */
-    public long deserialize(DataTree dt, Map<Long, Integer> sessions)
-            throws IOException {
+    public long deserialize(DataTree dt, Map<Long, Integer> sessions) throws IOException {
         // we run through 100 snapshots (not all of them)
         // if we cannot get it running within 100 snapshots
         // we should  give up
@@ -88,6 +87,7 @@ public class FileSnap implements SnapShot {
         if (snapList.size() == 0) {
             return -1L;
         }
+
         File snap = null;
         boolean foundValid = false;
         for (int i = 0; i < snapList.size(); i++) {
@@ -99,7 +99,10 @@ public class FileSnap implements SnapShot {
                 snapIS = new BufferedInputStream(new FileInputStream(snap));
                 crcIn = new CheckedInputStream(snapIS, new Adler32());
                 InputArchive ia = BinaryInputArchive.getArchive(crcIn);
+
+                // 反序列化这个snap文件
                 deserialize(dt, sessions, ia);
+
                 long checkSum = crcIn.getChecksum().getValue();
                 long val = ia.readLong("val");
 
@@ -135,8 +138,7 @@ public class FileSnap implements SnapShot {
      * @param ia the input archive to restore from
      * @throws IOException
      */
-    public void deserialize(DataTree dt, Map<Long, Integer> sessions,
-                            InputArchive ia) throws IOException {
+    public void deserialize(DataTree dt, Map<Long, Integer> sessions, InputArchive ia) throws IOException {
         // 头信息反序列化, 看头信息是否正确
         FileHeader header = new FileHeader();
         header.deserialize(ia, "fileheader");
@@ -145,6 +147,7 @@ public class FileSnap implements SnapShot {
                     + header.getMagic() +
                     " !=  " + FileSnap.SNAP_MAGIC);
         }
+        // 继续反序列化该snap文件
         SerializeUtils.deserializeSnapshot(dt, ia, sessions);
     }
 

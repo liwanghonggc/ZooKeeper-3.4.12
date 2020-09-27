@@ -1,4 +1,4 @@
-package org.apache.zookeeper.lock;
+package org.apache.zookeeper.my.lock;
 
 import com.google.common.collect.Iterables;
 import org.apache.zookeeper.*;

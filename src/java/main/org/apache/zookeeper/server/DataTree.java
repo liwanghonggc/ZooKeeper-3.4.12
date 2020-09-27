@@ -78,8 +78,7 @@ public class DataTree {
      *
      * 存放路径到DataNode的关系
      */
-    private final ConcurrentHashMap<String, DataNode> nodes =
-        new ConcurrentHashMap<String, DataNode>();
+    private final ConcurrentHashMap<String, DataNode> nodes = new ConcurrentHashMap<String, DataNode>();
 
     private final WatchManager dataWatches = new WatchManager();
 
@@ -113,8 +112,7 @@ public class DataTree {
      * This hashtable lists the paths of the ephemeral nodes of a session.
      * 临时节点的存放映射路径
      */
-    private final Map<Long, HashSet<String>> ephemerals =
-        new ConcurrentHashMap<Long, HashSet<String>>();
+    private final Map<Long, HashSet<String>> ephemerals = new ConcurrentHashMap<Long, HashSet<String>>();
 
     private final ReferenceCountedACLCache aclCache = new ReferenceCountedACLCache();
 
@@ -196,14 +194,12 @@ public class DataTree {
      * This is a pointer to the root of the DataTree. It is the source of truth,
      * but we usually use the nodes hashmap to find nodes in the tree.
      */
-    private DataNode root = new DataNode(null, new byte[0], -1L,
-            new StatPersisted());
+    private DataNode root = new DataNode(null, new byte[0], -1L, new StatPersisted());
 
     /**
      * create a /zookeeper filesystem that is the proc filesystem of zookeeper
      */
-    private DataNode procDataNode = new DataNode(root, new byte[0], -1L,
-            new StatPersisted());
+    private DataNode procDataNode = new DataNode(root, new byte[0], -1L, new StatPersisted());
 
     /**
      * create a /zookeeper/quota node for maintaining quota properties for
@@ -875,8 +871,7 @@ public class DataTree {
          * Note, such failures on DT should be seen only during
          * restore.
          */
-        if (header.getType() == OpCode.create &&
-                rc.err == Code.NODEEXISTS.intValue()) {
+        if (header.getType() == OpCode.create && rc.err == Code.NODEEXISTS.intValue()) {
             LOG.debug("Adjusting parent cversion for Txn: " + header.getType() +
                     " path:" + rc.path + " err: " + rc.err);
             int lastSlash = rc.path.lastIndexOf('/');
@@ -1089,28 +1084,39 @@ public class DataTree {
     }
 
     public void deserialize(InputArchive ia, String tag) throws IOException {
+        // acl相关反序列化, 后面分析
         aclCache.deserialize(ia);
+
         nodes.clear();
         pTrie.clear();
+
         String path = ia.readString("path");
         while (!path.equals("/")) {
             DataNode node = new DataNode();
+            // 反序列化这个节点信息, 反序列化之后, 该节点的data、ACL、stat信息就有了
             ia.readRecord(node, "node");
+
+            // 放入path node映射中
             nodes.put(path, node);
+
             synchronized (node) {
                 aclCache.addUsage(node.acl);
             }
+
             int lastSlash = path.lastIndexOf('/');
             if (lastSlash == -1) {
                 root = node;
             } else {
+                // 获取父节点
                 String parentPath = path.substring(0, lastSlash);
                 node.parent = nodes.get(parentPath);
                 if (node.parent == null) {
-                    throw new IOException("Invalid Datatree, unable to find " +
-                            "parent " + parentPath + " of path " + path);
+                    throw new IOException("Invalid Datatree, unable to find " + "parent " + parentPath + " of path " + path);
                 }
+                // 添加子节点
                 node.parent.addChild(path.substring(lastSlash + 1));
+
+                // 维护ephemerals, 记录sessionId和临时节点的映射关系
                 long eowner = node.stat.getEphemeralOwner();
                 if (eowner != 0) {
                     HashSet<String> list = ephemerals.get(eowner);
@@ -1121,13 +1127,17 @@ public class DataTree {
                     list.add(path);
                 }
             }
+            // 继续序列化
             path = ia.readString("path");
         }
+
+        // 最后放入根节点
         nodes.put("/", root);
-        // we are done with deserializing the
-        // the datatree
-        // update the quotas - create path trie
-        // and also update the stat nodes
+
+        /**
+         * we are done with deserializing the the datatree
+         * update the quotas - create path trie and also update the stat nodes
+         */
         setupQuota();
 
         aclCache.purgeUnused();

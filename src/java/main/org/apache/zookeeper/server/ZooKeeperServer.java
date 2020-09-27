@@ -285,6 +285,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             setZxid(zkDb.getDataTreeLastProcessedZxid());
         }
         else {
+            // 先分析这里, 正常启动时zkDb没有被初始化
             setZxid(zkDb.loadDataBase());
         }
         
@@ -344,7 +345,9 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     }
 
     protected void killSession(long sessionId, long zxid) {
+        // 删除临时节点
         zkDb.killSession(sessionId, zxid);
+
         if (LOG.isTraceEnabled()) {
             ZooTrace.logTraceMessage(LOG, ZooTrace.SESSION_TRACE_MASK,
                                          "ZooKeeperServer --- killSession: 0x"
@@ -950,32 +953,44 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             LOG.info(msg);
             throw new CloseRequestException(msg);
         }
+
+        // 获取客户端请求带过来的超时时间, 默认是10000ms
         int sessionTimeout = connReq.getTimeOut();
         byte passwd[] = connReq.getPasswd();
+
+        // 获取服务器配置的minSessionTimeout, 默认是 2 * tickTime, 默认是4000ms
         int minSessionTimeout = getMinSessionTimeout();
         if (sessionTimeout < minSessionTimeout) {
+            // 如果客户端设置的过小会不起作用, 过大同样如此
             sessionTimeout = minSessionTimeout;
         }
+
+        // 获取服务器配置的maxSessionTimeout, 默认是 20 * tickTime, 默认是40000ms
         int maxSessionTimeout = getMaxSessionTimeout();
         if (sessionTimeout > maxSessionTimeout) {
             sessionTimeout = maxSessionTimeout;
         }
+
+        // 默认配置下minSessionTimeout < sessionTimeout < maxSessionTimeout
         cnxn.setSessionTimeout(sessionTimeout);
-        // We don't want to receive any packets until we are sure that the
-        // session is setup
+
+        // We don't want to receive any packets until we are sure that the session is setup
         cnxn.disableRecv();
+
+        // 获取请求的sessionID
         long sessionId = connReq.getSessionId();
         if (sessionId != 0) {
             long clientSessionId = connReq.getSessionId();
             LOG.info("Client attempting to renew session 0x"
                     + Long.toHexString(clientSessionId)
                     + " at " + cnxn.getRemoteSocketAddress());
+            // 这边是连接建立处理请求, 如果sessionID不为0, 关掉该session, 重新建立一个
             serverCnxnFactory.closeSession(sessionId);
             cnxn.setSessionId(sessionId);
             reopenSession(cnxn, sessionId, passwd, sessionTimeout);
         } else {
-            LOG.info("Client attempting to establish new session at "
-                    + cnxn.getRemoteSocketAddress());
+            LOG.info("Client attempting to establish new session at " + cnxn.getRemoteSocketAddress());
+            // 创建一个Session
             createSession(cnxn, passwd, sessionTimeout);
         }
     }

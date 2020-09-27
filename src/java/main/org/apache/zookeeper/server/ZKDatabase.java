@@ -75,13 +75,14 @@ public class ZKDatabase {
     volatile private boolean initialized = false;
     
     /**
-     * the filetxnsnaplog that this zk database
-     * maps to. There is a one to one relationship
-     * between a filetxnsnaplog and zkdatabase.
+     * The filetxnsnaplog that this zk database maps to.
+     * There is a one to one relationship between a filetxnsnaplog and zkdatabase.
      * @param snapLog the FileTxnSnapLog mapping this zkdatabase
      */
     public ZKDatabase(FileTxnSnapLog snapLog) {
+        // 初始化一个DataTree结构
         dataTree = new DataTree();
+        // 保存所有会话超时时间的记录器
         sessionsWithTimeouts = new ConcurrentHashMap<Long, Integer>();
         this.snapLog = snapLog;
     }

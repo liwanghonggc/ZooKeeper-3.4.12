@@ -112,6 +112,7 @@ abstract class ClientCnxnSocket {
         if (len < 0 || len >= ClientCnxn.packetLen) {
             throw new IOException("Packet len" + len + " is out of range!");
         }
+        // 读取完消息长度之和, 为incomingBuffer分配这么大的空间
         incomingBuffer = ByteBuffer.allocate(len);
     }
 
@@ -133,6 +134,7 @@ abstract class ClientCnxnSocket {
         // read "is read-only" flag
         boolean isRO = false;
         try {
+            // 判断连接的server是不是只读的
             isRO = bbia.readBool("readOnly");
         } catch (IOException e) {
             // this is ok -- just a packet from an old server which
@@ -140,9 +142,9 @@ abstract class ClientCnxnSocket {
             LOG.warn("Connected to an old server; r-o mode will be unavailable");
         }
 
+        // 获取服务器返回的SessionID
         this.sessionId = conRsp.getSessionId();
-        sendThread.onConnected(conRsp.getTimeOut(), this.sessionId,
-                conRsp.getPasswd(), isRO);
+        sendThread.onConnected(conRsp.getTimeOut(), this.sessionId, conRsp.getPasswd(), isRO);
     }
 
     abstract boolean isConnected();

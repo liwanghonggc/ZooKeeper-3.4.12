@@ -108,6 +108,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
     public void start() {
         // ensure thread is started once and only once
         if (thread.getState() == Thread.State.NEW) {
+            // 调用run方法
             thread.start();
         }
     }
@@ -117,9 +118,12 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
             InterruptedException {
         // 启动NIO网络服务
         start();
+
         setZooKeeperServer(zks);
+
         // 加载数据
         zks.startdata();
+
         zks.startup();
     }
 
@@ -211,6 +215,8 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                 for (SelectionKey k : selectedList) {
                     // 连接建立事件
                     if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
+                        // ClientCnxnSocketNIO.registerAndConnect方法调用之后, 这边会感知到
+                        System.out.println("接收到连接建立事件");
                         // 拿到与客户端的连接通道
                         SocketChannel sc = ((ServerSocketChannel) k.channel()).accept();
                         InetAddress ia = sc.socket().getInetAddress();
@@ -234,6 +240,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                     }
                     // 读或写事件
                     else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
+                        System.out.println("接收到读或写事件");
                         NIOServerCnxn c = (NIOServerCnxn) k.attachment();
                         c.doIO(k);
                     } else {
@@ -250,6 +257,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                 LOG.warn("Ignoring exception", e);
             }
         }
+        // 关闭
         closeAll();
         LOG.info("NIOServerCnxn factory exited run method");
     }

@@ -1,4 +1,4 @@
-package org.apache.zookeeper.lock;
+package org.apache.zookeeper.my.lock;
 
 /**
  * @author lwh

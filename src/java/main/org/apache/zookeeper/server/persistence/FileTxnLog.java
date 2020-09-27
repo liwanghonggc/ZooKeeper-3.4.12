@@ -585,16 +585,23 @@ public class FileTxnLog implements TxnLog {
             storedFiles = new ArrayList<File>();
             List<File> files = Util.sortDataDir(FileTxnLog.getLogFiles(logDir.listFiles(), 0), LOG_FILE_PREFIX, false);
             for (File f : files) {
+                // >= zxid, 是我们想要的file
                 if (Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX) >= zxid) {
                     storedFiles.add(f);
                 }
-                // add the last logfile that is less than the zxid
+                /**
+                 * add the last logfile that is less than the zxid
+                 * 把第一个小于zxid的文件也放进去
+                 */
                 else if (Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX) < zxid) {
                     storedFiles.add(f);
                     break;
                 }
             }
+
+            // 从storedFiles文件里面一个个读取
             goToNextLog();
+
             if (!next())
                 return;
             while (hdr.getZxid() < zxid) {
@@ -682,6 +689,7 @@ public class FileTxnLog implements TxnLog {
                 crc.update(bytes, 0, bytes.length);
                 if (crcValue != crc.getValue())
                     throw new IOException(CRC_ERROR);
+                // 解析获取hdr和record
                 hdr = new TxnHeader();
                 record = SerializeUtils.deserializeTxn(bytes, hdr);
             } catch (EOFException e) {
@@ -690,8 +698,10 @@ public class FileTxnLog implements TxnLog {
                 inputStream = null;
                 ia = null;
                 hdr = null;
-                // this means that the file has ended
-                // we should go to the next file
+                /**
+                 * this means that the file has ended we should go to the next file
+                 * 继续读取下一个文件
+                 */
                 if (!goToNextLog()) {
                     return false;
                 }

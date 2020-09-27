@@ -90,6 +90,7 @@ public class ZooKeeper {
     public static final String ZOOKEEPER_CLIENT_CNXN_SOCKET = "zookeeper.clientCnxnSocket";
 
     protected final ClientCnxn cnxn;
+
     private static final Logger LOG;
     static {
         //Keep these two lines together to keep the initialization order explicit
@@ -131,12 +132,11 @@ public class ZooKeeper {
      */
     private static class ZKWatchManager implements ClientWatchManager {
 
-        private final Map<String, Set<Watcher>> dataWatches =
-            new HashMap<String, Set<Watcher>>();
-        private final Map<String, Set<Watcher>> existWatches =
-            new HashMap<String, Set<Watcher>>();
-        private final Map<String, Set<Watcher>> childWatches =
-            new HashMap<String, Set<Watcher>>();
+        private final Map<String, Set<Watcher>> dataWatches = new HashMap<String, Set<Watcher>>();
+
+        private final Map<String, Set<Watcher>> existWatches = new HashMap<String, Set<Watcher>>();
+
+        private final Map<String, Set<Watcher>> childWatches = new HashMap<String, Set<Watcher>>();
 
         private volatile Watcher defaultWatcher;
 
@@ -442,18 +442,20 @@ public class ZooKeeper {
         LOG.info("Initiating client connection, connectString=" + connectString
                 + " sessionTimeout=" + sessionTimeout + " watcher=" + watcher);
 
+        // 默认的事件处理
         watchManager.defaultWatcher = watcher;
 
         // 解析要连接的zk地址
         ConnectStringParser connectStringParser = new ConnectStringParser(connectString);
 
+        // hostProvider提供获取服务器地址的功能
         HostProvider hostProvider = new StaticHostProvider(connectStringParser.getServerAddresses());
 
-
         cnxn = new ClientCnxn(connectStringParser.getChrootPath(),
-                hostProvider, sessionTimeout, this, watchManager,
-                getClientCnxnSocket(), canBeReadOnly);
+                              hostProvider, sessionTimeout, this, watchManager,
+                              getClientCnxnSocket(), canBeReadOnly);
 
+        // 启动sendThread和eventThread
         cnxn.start();
     }
 
@@ -1848,8 +1850,8 @@ public class ZooKeeper {
             clientCnxnSocketName = ClientCnxnSocketNIO.class.getName();
         }
         try {
-            return (ClientCnxnSocket) Class.forName(clientCnxnSocketName).getDeclaredConstructor()
-                    .newInstance();
+            // 创建与服务器交互的ClientCnxnSocket
+            return (ClientCnxnSocket) Class.forName(clientCnxnSocketName).getDeclaredConstructor().newInstance();
         } catch (Exception e) {
             IOException ioe = new IOException("Couldn't instantiate "
                     + clientCnxnSocketName);

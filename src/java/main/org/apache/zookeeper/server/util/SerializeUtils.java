@@ -110,14 +110,16 @@ public class SerializeUtils {
         return txn;
     }
 
-    public static void deserializeSnapshot(DataTree dt,InputArchive ia,
-            Map<Long, Integer> sessions) throws IOException {
+    public static void deserializeSnapshot(DataTree dt,InputArchive ia, Map<Long, Integer> sessions) throws IOException {
         // 读取文件中会话数量
         int count = ia.readInt("count");
         while (count > 0) {
             long id = ia.readLong("id");
             int to = ia.readInt("timeout");
+
+            // 依次读取放入sessions中
             sessions.put(id, to);
+
             if (LOG.isTraceEnabled()) {
                 ZooTrace.logTraceMessage(LOG, ZooTrace.SESSION_TRACE_MASK,
                         "loadData --- session in archive: " + id

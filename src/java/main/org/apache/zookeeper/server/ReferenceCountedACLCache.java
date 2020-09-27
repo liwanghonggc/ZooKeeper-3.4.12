@@ -44,8 +44,7 @@ public class ReferenceCountedACLCache {
     final Map<List<ACL>, Long> aclKeyMap =
             new HashMap<List<ACL>, Long>();
 
-    final Map<Long, AtomicLongWithEquals> referenceCounter =
-            new HashMap<Long, AtomicLongWithEquals>();
+    final Map<Long, AtomicLongWithEquals> referenceCounter = new HashMap<Long, AtomicLongWithEquals>();
     private static final long OPEN_UNSAFE_ACL_ID = -1L;
 
     /**
