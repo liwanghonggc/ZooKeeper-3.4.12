@@ -62,8 +62,10 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
     */
     final ByteBuffer directBuffer = ByteBuffer.allocateDirect(64 * 1024);
 
-    final HashMap<InetAddress, Set<NIOServerCnxn>> ipMap =
-        new HashMap<InetAddress, Set<NIOServerCnxn>>( );
+    /**
+     * InetAddress为Key, Value为与Key这个客户端建立的连接
+     */
+    final HashMap<InetAddress, Set<NIOServerCnxn>> ipMap = new HashMap<InetAddress, Set<NIOServerCnxn>>( );
 
     int maxClientCnxns = 60;
 
@@ -133,6 +135,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
 
     private void addCnxn(NIOServerCnxn cnxn) {
         synchronized (cnxns) {
+            // 将服务器与客户端的连接放到cnxns中
             cnxns.add(cnxn);
             synchronized (ipMap){
                 InetAddress addr = cnxn.sock.socket().getInetAddress();
@@ -167,8 +170,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
             }
 
             synchronized (ipMap) {
-                Set<NIOServerCnxn> s =
-                        ipMap.get(cnxn.getSocketAddress());
+                Set<NIOServerCnxn> s = ipMap.get(cnxn.getSocketAddress());
                 s.remove(cnxn);
             }
 
@@ -195,6 +197,8 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
     public void run() {
         while (!ss.socket().isClosed()) {
             try {
+                // 监听感兴趣的事件, 上面configure中是注册了监听连接事件
+                // ss.register(selector, SelectionKey.OP_ACCEPT);
                 selector.select(1000);
                 Set<SelectionKey> selected;
                 synchronized (this) {
@@ -202,27 +206,34 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                 }
                 ArrayList<SelectionKey> selectedList = new ArrayList<SelectionKey>(selected);
                 Collections.shuffle(selectedList);
+
+                // 处理监听到的事件
                 for (SelectionKey k : selectedList) {
+                    // 连接建立事件
                     if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
-                        SocketChannel sc = ((ServerSocketChannel) k
-                                .channel()).accept();
+                        // 拿到与客户端的连接通道
+                        SocketChannel sc = ((ServerSocketChannel) k.channel()).accept();
                         InetAddress ia = sc.socket().getInetAddress();
+
+                        // 获取该InetAddress上已经建立了多少连接, 如果超过maxClientCnxns就报错, 并且关掉当前建立的连接
                         int cnxncount = getClientCnxnCount(ia);
                         if (maxClientCnxns > 0 && cnxncount >= maxClientCnxns){
-                            LOG.warn("Too many connections from " + ia
-                                     + " - max is " + maxClientCnxns );
+                            LOG.warn("Too many connections from " + ia + " - max is " + maxClientCnxns );
                             sc.close();
                         } else {
-                            LOG.info("Accepted socket connection from "
-                                     + sc.socket().getRemoteSocketAddress());
+                            LOG.info("Accepted socket connection from " + sc.socket().getRemoteSocketAddress());
+                            // 设置非阻塞模式
                             sc.configureBlocking(false);
-                            SelectionKey sk = sc.register(selector,
-                                    SelectionKey.OP_READ);
+                            // 连接建立后, 我要监听该连接上面的读事件
+                            SelectionKey sk = sc.register(selector, SelectionKey.OP_READ);
+
                             NIOServerCnxn cnxn = createConnection(sc, sk);
                             sk.attach(cnxn);
                             addCnxn(cnxn);
                         }
-                    } else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
+                    }
+                    // 读或写事件
+                    else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
                         NIOServerCnxn c = (NIOServerCnxn) k.attachment();
                         c.doIO(k);
                     } else {

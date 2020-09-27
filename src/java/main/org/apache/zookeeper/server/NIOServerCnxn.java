@@ -88,26 +88,35 @@ public class NIOServerCnxn extends ServerCnxn {
     long sessionId;
 
     static long nextSessionId = 1;
+
+    /**
+     * 这个配置指定了等待处理的最大请求数量的限制(zookeeper.globalOutstandingLimit)
+     * client发送请求的速度可能会比server端处理的速度快,会导致请求在server端排队,最终(在若干秒内)会使server的内存耗尽
+     * 为了避免这一点,如果等待的请求数量达到了globalOutstandingLimit,server端会拒绝client的请求
+     * https://www.cnblogs.com/allenhaozi/p/11416817.html
+     */
     int outstandingLimit = 1;
 
     public NIOServerCnxn(ZooKeeperServer zk, SocketChannel sock,
             SelectionKey sk, NIOServerCnxnFactory factory) throws IOException {
         this.zkServer = zk;
+        // 与客户端的连接通道
         this.sock = sock;
         this.sk = sk;
         this.factory = factory;
         if (this.factory.login != null) {
             this.zooKeeperSaslServer = new ZooKeeperSaslServer(factory.login);
         }
-        if (zk != null) { 
+
+        if (zk != null) {
+            // 这个配置指定了等待处理的最大请求数量的限制
             outstandingLimit = zk.getGlobalOutstandingLimit();
         }
+
         sock.socket().setTcpNoDelay(true);
-        /* set socket linger to false, so that socket close does not
-         * block */
+        /* set socket linger to false, so that socket close does not block */
         sock.socket().setSoLinger(false, -1);
-        InetAddress addr = ((InetSocketAddress) sock.socket()
-                .getRemoteSocketAddress()).getAddress();
+        InetAddress addr = ((InetSocketAddress) sock.socket().getRemoteSocketAddress()).getAddress();
         authInfo.add(new Id("ip", addr.getHostAddress()));
         sk.interestOps(SelectionKey.OP_READ);
     }
@@ -1015,12 +1024,15 @@ public class NIOServerCnxn extends ServerCnxn {
      */
     @Override
     public void close() {
+        // 关闭时移除掉这个连接
         factory.removeCnxn(this);
 
         if (zkServer != null) {
+            // 这里面会从dataWatches和childWatches移除掉对应的Watcher
             zkServer.removeCnxn(this);
         }
 
+        // 关闭Socket连接
         closeSock();
 
         if (sk != null) {

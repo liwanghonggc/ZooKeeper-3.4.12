@@ -39,6 +39,7 @@ class ZooKeeperServerShutdownHandler {
      * @param state new server state
      */
     void handle(State state) {
+        // 状态为关闭或错误时才countDown, 否则会一直await住
         if (state == State.ERROR || state == State.SHUTDOWN) {
             shutdownLatch.countDown();
         }

@@ -313,15 +313,19 @@ public class LearnerHandler extends ZooKeeperThread {
     @Override
     public void run() {
         try {
+            // 加到Leader节点的HashSet learners里面
             leader.addLearnerHandler(this);
             tickOfNextAckDeadline = leader.self.tick.get()
                     + leader.self.initLimit + leader.self.syncLimit;
 
+            // 初始化输入输出流
             ia = BinaryInputArchive.getArchive(bufferedInput);
             bufferedOutput = new BufferedOutputStream(sock.getOutputStream());
             oa = BinaryOutputArchive.getArchive(bufferedOutput);
 
             QuorumPacket qp = new QuorumPacket();
+
+            // 读取消息
             ia.readRecord(qp, "packet");
             if(qp.getType() != Leader.FOLLOWERINFO && qp.getType() != Leader.OBSERVERINFO){
             	LOG.error("First packet " + qp.toString()
@@ -366,6 +370,7 @@ public class LearnerHandler extends ZooKeeperThread {
             } else {
                 byte ver[] = new byte[4];
                 ByteBuffer.wrap(ver).putInt(0x10000);
+                // 发送LeaderInfo
                 QuorumPacket newEpochPacket = new QuorumPacket(Leader.LEADERINFO, ZxidUtils.makeZxid(newEpoch, 0), ver, null);
                 oa.writeRecord(newEpochPacket, "packet");
                 bufferedOutput.flush();
@@ -378,6 +383,8 @@ public class LearnerHandler extends ZooKeeperThread {
 				}
                 ByteBuffer bbepoch = ByteBuffer.wrap(ackEpochPacket.getData());
                 ss = new StateSummary(bbepoch.getInt(), ackEpochPacket.getZxid());
+
+                // 等待ack
                 leader.waitForEpochAck(this.getSid(), ss);
             }
             peerLastZxid = ss.getLastZxid();
@@ -395,9 +402,11 @@ public class LearnerHandler extends ZooKeeperThread {
             ReentrantReadWriteLock lock = leader.zk.getZKDatabase().getLogLock();
             ReadLock rl = lock.readLock();
             try {
-                rl.lock();        
+                rl.lock();
+                // minZxid和maxZxid
                 final long maxCommittedLog = leader.zk.getZKDatabase().getmaxCommittedLog();
                 final long minCommittedLog = leader.zk.getZKDatabase().getminCommittedLog();
+
                 LOG.info("Synchronizing with Follower sid: " + sid
                         +" maxCommittedLog=0x"+Long.toHexString(maxCommittedLog)
                         +" minCommittedLog=0x"+Long.toHexString(minCommittedLog)
@@ -413,8 +422,8 @@ public class LearnerHandler extends ZooKeeperThread {
                     zxidToSend = peerLastZxid;
                 } else if (proposals.size() != 0) {
                     LOG.debug("proposal size is {}", proposals.size());
-                    if ((maxCommittedLog >= peerLastZxid)
-                            && (minCommittedLog <= peerLastZxid)) {
+                    // DIFF操作
+                    if ((maxCommittedLog >= peerLastZxid) && (minCommittedLog <= peerLastZxid)) {
                         LOG.debug("Sending proposals to follower");
 
                         // as we look through proposals, this variable keeps track of previous
@@ -451,8 +460,7 @@ public class LearnerHandler extends ZooKeeperThread {
                                     }
                                 }
                                 queuePacket(propose.packet);
-                                QuorumPacket qcommit = new QuorumPacket(Leader.COMMIT, propose.packet.getZxid(),
-                                        null, null);
+                                QuorumPacket qcommit = new QuorumPacket(Leader.COMMIT, propose.packet.getZxid(), null, null);
                                 queuePacket(qcommit);
                             }
                         }
@@ -461,6 +469,7 @@ public class LearnerHandler extends ZooKeeperThread {
                                 Long.toHexString(maxCommittedLog),
                                 Long.toHexString(updates));
 
+                        // TRUNC
                         packetToSend = Leader.TRUNC;
                         zxidToSend = maxCommittedLog;
                         updates = zxidToSend;

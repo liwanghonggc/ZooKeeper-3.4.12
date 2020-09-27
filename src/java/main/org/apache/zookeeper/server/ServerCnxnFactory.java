@@ -59,8 +59,7 @@ public abstract class ServerCnxnFactory {
     private static final Logger LOG = LoggerFactory.getLogger(ServerCnxnFactory.class);
 
     // sessionMap is used to speed up closeSession()
-    protected final ConcurrentMap<Long, ServerCnxn> sessionMap =
-            new ConcurrentHashMap<Long, ServerCnxn>();
+    protected final ConcurrentMap<Long, ServerCnxn> sessionMap = new ConcurrentHashMap<Long, ServerCnxn>();
 
     /**
      * The buffer will cause the connection to be close when we do a send.
@@ -105,6 +104,7 @@ public abstract class ServerCnxnFactory {
     public abstract void start();
 
     protected ZooKeeperServer zkServer;
+
     final public void setZooKeeperServer(ZooKeeperServer zk) {
         this.zkServer = zk;
         if (zk != null) {
@@ -154,6 +154,7 @@ public abstract class ServerCnxnFactory {
         = new ConcurrentHashMap<ServerCnxn, ConnectionBean>();
 
     protected final HashSet<ServerCnxn> cnxns = new HashSet<ServerCnxn>();
+
     public void unregisterConnection(ServerCnxn serverCnxn) {
         ConnectionBean jmxConnectionBean = connectionBeans.remove(serverCnxn);
         if (jmxConnectionBean != null){

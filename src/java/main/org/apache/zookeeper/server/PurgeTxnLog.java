@@ -83,11 +83,16 @@ public class PurgeTxnLog {
         List<File> snaps = txnLog.findNRecentSnapshots(num);
         int numSnaps = snaps.size();
         if (numSnaps > 0) {
+            // snaps.get(numSnaps - 1), 该文件前面的(包含自己)文件都需要保留不清除
             purgeOlderSnapshots(txnLog, snaps.get(numSnaps - 1));
         }
     }
 
-    // VisibleForTesting
+    /**
+     * 1) 查找最后一个应该保留的zxid
+     * 2) 根据zxid找到需要清除的快照文件列表和事务日志文件列表
+     * 3) 清除文件列表
+     */
     static void purgeOlderSnapshots(FileTxnSnapLog txnLog, File snapShot) {
         // 需要保存的最后一个文件的zxid, 其他的要清理
         final long leastZxidToBeRetain = Util.getZxidFromName(snapShot.getName(), PREFIX_SNAPSHOT);
@@ -124,12 +129,17 @@ public class PurgeTxnLog {
                 this.prefix=prefix;
             }
             public boolean accept(File f){
+                // 文件名校验
                 if(!f.getName().startsWith(prefix + "."))
                     return false;
+
+                // 在上面获取的retainedTxnLogs中, 也需要保留
                 if (retainedTxnLogs.contains(f)) {
                     return false;
                 }
+
                 long fZxid = Util.getZxidFromName(f.getName(), prefix);
+                // fZxid >= leastZxidToBeRetain 也是需要保留的
                 if (fZxid >= leastZxidToBeRetain) {
                     return false;
                 }
@@ -138,12 +148,14 @@ public class PurgeTxnLog {
         }
         // add all non-excluded log files
         List<File> files = new ArrayList<File>();
+        // 获取所有增量事务日志, 通过MyFileFilter过滤完就是要删除的
         File[] fileArray = txnLog.getDataDir().listFiles(new MyFileFilter(PREFIX_LOG));
         if (fileArray != null) {
             files.addAll(Arrays.asList(fileArray));
         }
 
         // add all non-excluded snapshot files to the deletion list
+        // 获取所有快照文件, 通过MyFileFilter过滤完就是要删除的
         fileArray = txnLog.getSnapDir().listFiles(new MyFileFilter(PREFIX_SNAPSHOT));
         if (fileArray != null) {
             files.addAll(Arrays.asList(fileArray));
@@ -158,6 +170,7 @@ public class PurgeTxnLog {
                 "\t"+f.getPath();
             LOG.info(msg);
             System.out.println(msg);
+            // 删除文件
             if(!f.delete()){
                 System.err.println("Failed to remove "+f.getPath());
             }

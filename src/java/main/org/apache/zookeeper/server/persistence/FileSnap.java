@@ -205,12 +205,14 @@ public class FileSnap implements SnapShot {
      * @throws IOException
      */
     public List<File> findNRecentSnapshots(int n) throws IOException {
+        // 根据Zxid降序排, 获取前n个snapShot文件
         List<File> files = Util.sortDataDir(snapDir.listFiles(), SNAPSHOT_FILE_PREFIX, false);
         int count = 0;
         List<File> list = new ArrayList<File>();
         for (File f : files) {
             if (count == n)
                 break;
+            // 获取文件的Zxid, 只要不是-1, 就认为是有效的, 获取前n个返回
             if (Util.getZxidFromName(f.getName(), SNAPSHOT_FILE_PREFIX) != -1) {
                 count++;
                 list.add(f);

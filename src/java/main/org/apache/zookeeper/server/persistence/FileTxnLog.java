@@ -286,22 +286,21 @@ public class FileTxnLog implements TxnLog {
      * Find the log file that starts at, or just before, the snapshot. Return
      * this and all subsequent logs. Results are ordered by zxid of file,
      * ascending order.
-     * @param logDirList array of files
-     * @param snapshotZxid return files at, or before this zxid
-     * @return
+     *
+     * 找到在snapshotZxid处的(可以稍早)的log文件, 返回它以及它之后的文件
+     * 画个图容易理解
      */
     public static File[] getLogFiles(File[] logDirList, long snapshotZxid) {
+        // 获取.log形式日志, 按照Zxid升序排列
         List<File> files = Util.sortDataDir(logDirList, LOG_FILE_PREFIX, true);
         long logZxid = 0;
-        // Find the log file that starts before or at the same time as the
-        // zxid of the snapshot
+        // Find the log file that starts before or at the same time as the zxid of the snapshot
         for (File f : files) {
             long fzxid = Util.getZxidFromName(f.getName(), LOG_FILE_PREFIX);
             if (fzxid > snapshotZxid) {
                 continue;
             }
-            // the files
-            // are sorted with zxid's
+            // the files are sorted with zxid's
             if (fzxid > logZxid) {
                 logZxid = fzxid;
             }
@@ -396,6 +395,7 @@ public class FileTxnLog implements TxnLog {
      * logs
      */
     public TxnIterator read(long zxid) throws IOException {
+        // 进去看
         return new FileTxnIterator(logDir, zxid);
     }
 
@@ -572,6 +572,7 @@ public class FileTxnLog implements TxnLog {
         public FileTxnIterator(File logDir, long zxid) throws IOException {
             this.logDir = logDir;
             this.zxid = zxid;
+            // 进去
             init();
         }
 

@@ -55,11 +55,18 @@ public class FileTxnSnapLog {
 
     /**
      * the directory containing the the snapshot directory
+     * 快照文件目录
      */
     private final File snapDir;
 
+    /**
+     * 事务日志
+     */
     private TxnLog txnLog;
 
+    /**
+     * 快照
+     */
     private SnapShot snapLog;
 
     public final static int VERSION = 2;
@@ -69,13 +76,15 @@ public class FileTxnSnapLog {
     private static final Logger LOG = LoggerFactory.getLogger(FileTxnSnapLog.class);
 
     /**
-     * This listener helps
-     * the external apis calling
-     * restore to gather information
-     * while the data is being 
-     * restored.
+     * This listener helps the external apis calling restore to gather information
+     * while the data is being restored.
      */
     public interface PlayBackListener {
+
+        /**
+         * 用来接收事务应用过程中的回调,在Zookeeper数据恢复后期,会有事务修正过程,此过程会回调PlayBackListener来进行对应的数据修正
+         * 在完成事务操作后,会调用到onTxnLoaded方法进行相应的处理
+         */
         void onTxnLoaded(TxnHeader hdr, Record rec);
     }
 
@@ -88,6 +97,7 @@ public class FileTxnSnapLog {
     public FileTxnSnapLog(File dataDir, File snapDir) throws IOException {
         LOG.debug("Opening datadir:{} snapDir:{}", dataDir, snapDir);
 
+        // 在dataDir和snapDir目录下生成version-2目录
         this.dataDir = new File(dataDir, version + VERSION);
         this.snapDir = new File(snapDir, version + VERSION);
         if (!this.dataDir.exists()) {
@@ -197,7 +207,8 @@ public class FileTxnSnapLog {
     public long fastForwardFromEdits(DataTree dt, Map<Long, Integer> sessions,
                                      PlayBackListener listener) throws IOException {
         FileTxnLog txnLog = new FileTxnLog(dataDir);
-        // 获取txnLog中大于lastProcessedZxid的迭代器
+        // 获取txnLog中大于lastProcessedZxid的迭代器,
+        // 看下reed方法
         TxnIterator itr = txnLog.read(dt.lastProcessedZxid + 1);
         long highestZxid = dt.lastProcessedZxid;
         TxnHeader hdr;

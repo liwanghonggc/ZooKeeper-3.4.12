@@ -194,6 +194,7 @@ public class Learner {
     protected QuorumServer findLeader() {
         QuorumServer leaderServer = null;
         // Find the leader by id
+        // 快速选举算法之后, Vote里面存储的就是Leader的信息
         Vote current = self.getCurrentVote();
         for (QuorumServer s : self.getView().values()) {
             if (s.id == current.getId()) {
@@ -224,6 +225,7 @@ public class Learner {
             throws IOException, ConnectException, InterruptedException {
         sock = new Socket();        
         sock.setSoTimeout(self.tickTime * self.initLimit);
+        // 尝试连接5次
         for (int tries = 0; tries < 5; tries++) {
             try {
                 sock.connect(addr, self.tickTime * self.syncLimit);
@@ -245,8 +247,8 @@ public class Learner {
 
         self.authLearner.authenticate(sock, hostname);
 
-        leaderIs = BinaryInputArchive.getArchive(new BufferedInputStream(
-                sock.getInputStream()));
+        // 初始化leaderIs和leaderOs, 即网络输入输出流
+        leaderIs = BinaryInputArchive.getArchive(new BufferedInputStream(sock.getInputStream()));
         bufferedOutput = new BufferedOutputStream(sock.getOutputStream());
         leaderOs = BinaryOutputArchive.getArchive(bufferedOutput);
     }   
@@ -263,6 +265,7 @@ public class Learner {
          * Send follower info, including last zxid and sid
          */
     	long lastLoggedZxid = self.getLastLoggedZxid();
+    	// 设置请求Type, 数据同步时首先传进来的type是FOLLOWERINFO
         QuorumPacket qp = new QuorumPacket();                
         qp.setType(pktType);
         qp.setZxid(ZxidUtils.makeZxid(self.getAcceptedEpoch(), 0));
@@ -275,10 +278,15 @@ public class Learner {
         BinaryOutputArchive boa = BinaryOutputArchive.getArchive(bsid);
         boa.writeRecord(li, "LearnerInfo");
         qp.setData(bsid.toByteArray());
-        
+
+        // 将数据包发出去
         writePacket(qp, true);
-        readPacket(qp);        
+
+        readPacket(qp);
+
         final long newEpoch = ZxidUtils.getEpochFromZxid(qp.getZxid());
+
+
 		if (qp.getType() == Leader.LEADERINFO) {
         	// we are connected to a 1.0 server so accept the new epoch and read the next packet
         	leaderProtocolVersion = ByteBuffer.wrap(qp.getData()).getInt();
@@ -296,8 +304,11 @@ public class Learner {
         	} else {
         		throw new IOException("Leaders epoch, " + newEpoch + " is less than accepted epoch, " + self.getAcceptedEpoch());
         	}
+
+        	// ack Epoch
         	QuorumPacket ackNewEpoch = new QuorumPacket(Leader.ACKEPOCH, lastLoggedZxid, epochBytes, null);
         	writePacket(ackNewEpoch, true);
+
             return ZxidUtils.makeZxid(newEpoch, 0);
         } else {
         	if (newEpoch > self.getAcceptedEpoch()) {
@@ -328,6 +339,7 @@ public class Learner {
         LinkedList<Long> packetsCommitted = new LinkedList<Long>();
         LinkedList<PacketInFlight> packetsNotCommitted = new LinkedList<PacketInFlight>();
         synchronized (zk) {
+            // 三种数据同步的方式 SNAP、DIFF、TRUNC
             if (qp.getType() == Leader.DIFF) {
                 LOG.info("Getting a diff from the leader 0x{}", Long.toHexString(qp.getZxid()));
                 snapshotNeeded = false;
@@ -336,6 +348,7 @@ public class Learner {
                 LOG.info("Getting a snapshot from leader 0x" + Long.toHexString(qp.getZxid()));
                 // The leader is going to dump the database
                 // clear our own database and read
+                // 清空自己的数据, 接收leader的数据
                 zk.getZKDatabase().clear();
                 zk.getZKDatabase().deserializeSnapshot(leaderIs);
                 String signature = leaderIs.readString("signature");
@@ -348,6 +361,7 @@ public class Learner {
                 //we need to truncate the log to the lastzxid of the leader
                 LOG.warn("Truncating log to get in sync with the leader 0x"
                         + Long.toHexString(qp.getZxid()));
+                // 清空大于zxid的数据
                 boolean truncated=zk.getZKDatabase().truncateLog(qp.getZxid());
                 if (!truncated) {
                     // not able to truncate the log
@@ -380,7 +394,9 @@ public class Learner {
                 readPacket(qp);
                 switch(qp.getType()) {
                 case Leader.PROPOSAL:
+                    // DIFF情况下
                     PacketInFlight pif = new PacketInFlight();
+                    // 消息头和消息体
                     pif.hdr = new TxnHeader();
                     pif.rec = SerializeUtils.deserializeTxn(qp.getData(), pif.hdr);
                     if (pif.hdr.getZxid() != lastQueued + 1) {
@@ -394,11 +410,14 @@ public class Learner {
                     break;
                 case Leader.COMMIT:
                     if (!writeToTxnLog) {
+                        // 先PROPOSAL、再COMMIT, 取出刚刚放入的pif数据
                         pif = packetsNotCommitted.peekFirst();
                         if (pif.hdr.getZxid() != qp.getZxid()) {
                             LOG.warn("Committing " + qp.getZxid() + ", but next proposal is " + pif.hdr.getZxid());
                         } else {
+                            // 更新内存数据
                             zk.processTxn(pif.hdr, pif.rec);
+                            // 提交后删除
                             packetsNotCommitted.remove();
                         }
                     } else {
@@ -434,14 +453,18 @@ public class Learner {
                         zk.takeSnapshot();
                         self.setCurrentEpoch(newEpoch);
                     }
-                    self.cnxnFactory.setZooKeeperServer(zk);                
+                    // 设置Zk
+                    self.cnxnFactory.setZooKeeperServer(zk);
+                    // 这边就跳出循环了
                     break outerLoop;
-                case Leader.NEWLEADER: // Getting NEWLEADER here instead of in discovery 
+                case Leader.NEWLEADER:
+                    // Getting NEWLEADER here instead of in discovery
                     // means this is Zab 1.0
                     // Create updatingEpoch file and remove it after current
                     // epoch is set. QuorumPeer.loadDataBase() uses this file to
                     // detect the case where the server was terminated after
                     // taking a snapshot but before setting the current epoch.
+                    // 收到NEWLEADER说明同步完了
                     File updating = new File(self.getTxnFactory().getSnapDir(),
                                         QuorumPeer.UPDATING_EPOCH_FILENAME);
                     if (!updating.exists() && !updating.createNewFile()) {
@@ -464,8 +487,11 @@ public class Learner {
             }
         }
         ack.setZxid(ZxidUtils.makeZxid(newEpoch, 0));
+        // 数据同步完进行确认
         writePacket(ack, true);
         sock.setSoTimeout(self.tickTime * self.syncLimit);
+
+        // 
         zk.startup();
         /*
          * Update the election vote here to ensure that all members of the

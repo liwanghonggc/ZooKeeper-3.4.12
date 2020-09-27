@@ -249,8 +249,11 @@ public class ZKDatabase {
         WriteLock wl = logLock.writeLock();
         try {
             wl.lock();
+            // 这边的minCommittedLog和maxCommittedLog可以理解为数据同步时Leader节点使用的minZxid和maxZid
+            // 大于500, 移除掉头节点
             if (committedLog.size() > commitLogCount) {
                 committedLog.removeFirst();
+                // 重新赋值minCommittedLog
                 minCommittedLog = committedLog.getFirst().packet.getZxid();
             }
             if (committedLog.size() == 0) {
@@ -290,6 +293,7 @@ public class ZKDatabase {
      * @param cnxn the cnxn to remove from the datatree
      */
     public void removeCnxn(ServerCnxn cnxn) {
+        // 后面分析, TODO
         dataTree.removeCnxn(cnxn);
     }
 

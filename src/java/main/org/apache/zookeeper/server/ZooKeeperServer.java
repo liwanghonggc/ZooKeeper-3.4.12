@@ -153,6 +153,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
      */
     public ZooKeeperServer() {
         serverStats = new ServerStats(this);
+        // 监听器, 当ZK的一些关键线程停止时, 会收到回调从而设置ZK状态为State.ERROR
         listener = new ZooKeeperServerListenerImpl(this);
     }
     
@@ -485,6 +486,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     protected void setState(State state) {
         this.state = state;
         // Notify server state changes to the registered shutdown handler, if any.
+        // 当修改ZK Server的状态时, 会回调zkShutdownHandler.handle(state)
+        // 如果是ERROR或者SHUTDOWN状态, 那么handle里面shutdownLatch.countDown()
         if (zkShutdownHandler != null) {
             zkShutdownHandler.handle(state);
         } else {
