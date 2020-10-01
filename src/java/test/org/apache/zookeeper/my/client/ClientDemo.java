@@ -20,7 +20,6 @@ public class ClientDemo implements Watcher {
     public static void main(String[] args) throws IOException, KeeperException, InterruptedException {
         ZooKeeper zooKeeper = new ZooKeeper("localhost:2181", 10000, new ClientDemo());
 
-        Thread.sleep(3000);
 
         byte[] resByte = zooKeeper.getData("/dubbo", new ClientDemo(), stat);
 

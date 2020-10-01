@@ -338,6 +338,7 @@ public class ClientCnxn {
                 this.bb.putInt(this.bb.capacity() - 4);
                 this.bb.rewind();
             } catch (IOException e) {
+                System.out.println("Exception");
                 LOG.warn("Ignoring unexpected exception", e);
             }
         }
@@ -346,7 +347,7 @@ public class ClientCnxn {
         public String toString() {
             StringBuilder sb = new StringBuilder();
 
-            sb.append("clientPath:" + clientPath);
+            sb.append(" clientPath:" + clientPath);
             sb.append(" serverPath:" + serverPath);
             sb.append(" finished:" + finished);
 
@@ -693,6 +694,7 @@ public class ClientCnxn {
                 // finished设置为true
                 p.finished = true;
                 // 唤醒当前packet
+                System.out.println("时间: " + System.nanoTime() + ", 客户端获得了服务器的返回结果, 唤醒客户端等待的请求, p: " + p);
                 p.notifyAll();
             }
         } else {
@@ -896,7 +898,9 @@ public class ClientCnxn {
                 packet.replyHeader.setXid(replyHdr.getXid());
                 packet.replyHeader.setErr(replyHdr.getErr());
                 packet.replyHeader.setZxid(replyHdr.getZxid());
+
                 if (replyHdr.getZxid() > 0) {
+                    // 更新lastZxid
                     lastZxid = replyHdr.getZxid();
                 }
                 if (packet.response != null && replyHdr.getErr() == 0) {
@@ -909,6 +913,7 @@ public class ClientCnxn {
                             + Long.toHexString(sessionId) + ", packet:: " + packet);
                 }
             } finally {
+                // 这里面会唤醒在等待结果的请求
                 finishPacket(packet);
             }
         }
@@ -939,12 +944,15 @@ public class ClientCnxn {
         }
 
         void primeConnection() throws IOException {
-            LOG.info("Socket connection established to "
-                    + clientCnxnSocket.getRemoteSocketAddress()
-                    + ", initiating session");
+            LOG.info("Socket connection established to " + clientCnxnSocket.getRemoteSocketAddress() + ", initiating session");
+            // 表明不是第一次连接了
             isFirstConnect = false;
+            // 如果之前连的是RwServer, 则带上sessionId, 否则传0
             long sessId = (seenRwServerBefore) ? sessionId : 0;
-            // 构造ConnectRequest
+            /**
+             * 构造ConnectRequest
+             * 带上sessionTimeOut(new ZooKeeper时可以指定该参数, 服务器收到后根据自身配置和这个参数一起决定会话超时时间)
+             */
             ConnectRequest conReq = new ConnectRequest(0, lastZxid, sessionTimeout, sessId, sessionPasswd);
             synchronized (outgoingQueue) {
                 // We add backwards since we are pushing into the front
@@ -1009,6 +1017,8 @@ public class ClientCnxn {
                 }
 
                 // 加入一个连接建立请求Packet
+                System.out.println("时间: " + System.nanoTime() + ", 客户端与服务器建立了TCP连接, " +
+                                             "往outgoingQueue里面放入了一个ConnectRequest请求, 尝试和ZooKeeperServer建立连接");
                 outgoingQueue.addFirst(new Packet(null, null, conReq, null, null, readOnly));
             }
             // 完了之后通道可读可写
@@ -1110,9 +1120,15 @@ public class ClientCnxn {
             long lastPingRwServer = Time.currentElapsedTime();
             final int MAX_SEND_PING_INTERVAL = 10000; //10 seconds
             InetSocketAddress serverAddress = null;
+            /**
+             * 这边是大的一个while死循环
+             */
             while (state.isAlive()) {
                 try {
-                    // 如果socket没有连接
+                    /**
+                     * 如果socket没有连接, 判断isConnected是根据sockKey != null, 在ClientCnxnSocketNIO.registerAndConnect方法中客户端尝试与服务器发起TCP连接
+                     * 这里面之后socketKey就被赋值了
+                     */
                     if (!clientCnxnSocket.isConnected()) {
                         // 判断是不是第一次连接
                         if (!isFirstConnect) {
@@ -1139,6 +1155,7 @@ public class ClientCnxn {
                             serverAddress = hostProvider.next(1000);
                         }
                         // 连接服务端
+                        System.out.println("时间: " + System.nanoTime() + ", 客户端准备与服务器建立TCP连接");
                         startConnect(serverAddress);
                         clientCnxnSocket.updateLastSendAndHeard();
                     }
@@ -1195,11 +1212,10 @@ public class ClientCnxn {
                     }
                     // 会话保活
                     if (state.isConnected()) {
-                        //1000(1 second) is to prevent race condition missing to send the second ping
-                        //also make sure not to send too many pings when readTimeout is small
+                        // 1000(1 second) is to prevent race condition missing to send the second ping
+                        // also make sure not to send too many pings when readTimeout is small
                         // 下一个ping的时间
-                        int timeToNextPing = readTimeout / 2 - clientCnxnSocket.getIdleSend() -
-                                ((clientCnxnSocket.getIdleSend() > 1000) ? 1000 : 0);
+                        int timeToNextPing = readTimeout / 2 - clientCnxnSocket.getIdleSend() - ((clientCnxnSocket.getIdleSend() > 1000) ? 1000 : 0);
                         //send a ping request either time is due or no packet sent out within MAX_SEND_PING_INTERVAL
                         if (timeToNextPing <= 0 || clientCnxnSocket.getIdleSend() > MAX_SEND_PING_INTERVAL) {
                             sendPing();
@@ -1222,14 +1238,20 @@ public class ClientCnxn {
                             lastPingRwServer = now;
                             idlePingRwServer = 0;
                             pingRwTimeout = Math.min(2 * pingRwTimeout, maxPingRwTimeout);
+                            // 选择一个server向其发送请求询问是否为readOnly
                             pingRwServer();
                         }
                         to = Math.min(to, pingRwTimeout - idlePingRwServer);
                     }
 
-                    // 核心
+                    /**
+                     * 1) 客户端启动时向服务器发起建立TCP连接请求之后会走到这里, 在收到服务器响应之后尝试在这条TCP连接上面向服务器发起ConnectRequest请求
+                     * 2) 发起ConnectRequest请求时会构造一个请求放到outGoingQueue里面等待sendThread处理
+                     * 3) 然后外面是一个大的while循环, 又走到这里, 这时会从outGoingQueue里面取出刚刚放入的ConnectRequest请求
+                     */
                     clientCnxnSocket.doTransport(to, pendingQueue, outgoingQueue, ClientCnxn.this);
                 } catch (Throwable e) {
+                    // 已经关闭就直接退出了, 否则catch住异常之后还可以进入大循环中尝试再次连接
                     if (closing) {
                         if (LOG.isDebugEnabled()) {
                             // closing so this is expected
@@ -1257,12 +1279,16 @@ public class ClientCnxn {
                                     RETRY_CONN_MSG,
                                     e);
                         }
+
+                        // 一些清理动作, 关闭socket连接, 清理queue队列的里面的数据
                         cleanup();
+
                         if (state.isAlive()) {
+                            // catch住上述异常之后, 放入一个Disconnected类型的Event, 看了下不会做处理直接return掉了
                             eventThread.queueEvent(new WatchedEvent(
-                                    Event.EventType.None,
-                                    Event.KeeperState.Disconnected,
-                                    null));
+                                                   Event.EventType.None,
+                                                   Event.KeeperState.Disconnected,
+                                              null));
                         }
                         clientCnxnSocket.updateNow();
                         clientCnxnSocket.updateLastSendAndHeard();
@@ -1283,8 +1309,7 @@ public class ClientCnxn {
         private void pingRwServer() throws RWServerFoundException {
             String result = null;
             InetSocketAddress addr = hostProvider.next(0);
-            LOG.info("Checking server " + addr + " for being r/w." +
-                    " Timeout " + pingRwTimeout);
+            LOG.info("Checking server " + addr + " for being r/w." + " Timeout " + pingRwTimeout);
 
             Socket sock = null;
             BufferedReader br = null;
@@ -1293,9 +1318,13 @@ public class ClientCnxn {
                 sock.setSoLinger(false, -1);
                 sock.setSoTimeout(1000);
                 sock.setTcpNoDelay(true);
+
+                // 发送isReadOnly请求
                 sock.getOutputStream().write("isro".getBytes());
                 sock.getOutputStream().flush();
                 sock.shutdownOutput();
+
+                // 获取返回结果
                 br = new BufferedReader(new InputStreamReader(sock.getInputStream()));
                 result = br.readLine();
             } catch (ConnectException e) {
@@ -1321,6 +1350,7 @@ public class ClientCnxn {
                 }
             }
 
+            // 判断是不是rw, 如果是的话抛出RWServerFoundException会被外层捕获, 然后继续大的while循环尝试连接rwServerAddress
             if ("rw".equals(result)) {
                 pingRwTimeout = minPingRwTimeout;
                 // save the found address so that it's used during the next
@@ -1331,6 +1361,7 @@ public class ClientCnxn {
         }
 
         private void cleanup() {
+            // 将sockKey置null, 关闭与服务器的Socket连接
             clientCnxnSocket.cleanup();
             synchronized (pendingQueue) {
                 for (Packet p : pendingQueue) {
@@ -1362,6 +1393,7 @@ public class ClientCnxn {
 
             // 理解是 <= 0表明会话超期了
             if (negotiatedSessionTimeout <= 0) {
+
                 state = States.CLOSED;
 
                 eventThread.queueEvent(new WatchedEvent(
@@ -1386,6 +1418,8 @@ public class ClientCnxn {
 
             // 更新state字段
             state = (isRO) ? States.CONNECTEDREADONLY : States.CONNECTED;
+            System.out.println("时间: " + System.nanoTime() + ", 客户端与ZooKeeper服务连接建立完毕, 更新连接状态为: " + state);
+
             seenRwServerBefore |= !isRO;
             LOG.info("Session establishment complete on server "
                     + clientCnxnSocket.getRemoteSocketAddress()
@@ -1393,6 +1427,8 @@ public class ClientCnxn {
                     + ", negotiated timeout = " + negotiatedSessionTimeout
                     + (isRO ? " (READ-ONLY mode)" : ""));
             KeeperState eventState = (isRO) ? KeeperState.ConnectedReadOnly : KeeperState.SyncConnected;
+            System.out.println("时间: " + System.nanoTime() + ", 连接建立完毕之后, 客户端向eventThread发送一个WatcherEvent: "
+                    + new WatchedEvent(Watcher.Event.EventType.None, eventState, null));
             eventThread.queueEvent(new WatchedEvent(Watcher.Event.EventType.None, eventState, null));
         }
 
@@ -1537,9 +1573,9 @@ public class ClientCnxn {
             if (!state.isAlive() || closing) {
                 conLossPacket(packet);
             } else {
-                // If the client is asking to close the session then
-                // mark as closing
+                // If the client is asking to close the session then mark as closing
                 if (h.getType() == OpCode.closeSession) {
+                    // 置为终止, while大循环感知到后就会退出大循环
                     closing = true;
                 }
                 // new了一个Packet放到outgoingQueue

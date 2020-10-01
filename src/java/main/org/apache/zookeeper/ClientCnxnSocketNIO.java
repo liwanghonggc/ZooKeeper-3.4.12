@@ -36,6 +36,8 @@ import org.apache.zookeeper.ZooDefs.OpCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.zookeeper.ZooDefs.opNames;
+
 public class ClientCnxnSocketNIO extends ClientCnxnSocket {
     private static final Logger LOG = LoggerFactory
             .getLogger(ClientCnxnSocketNIO.class);
@@ -83,6 +85,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                     readLength();
                 } else if (!initialized) {
                     // 获取连接结果
+                    System.out.println("时间: " + System.nanoTime() + ", 客户端拿到服务器连接建立结果");
                     readConnectResult();
                     // 连接建立好后可读
                     enableRead();
@@ -129,19 +132,19 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                         p.createBB();
                     }
 
+                    System.out.println("时间: " + System.nanoTime() + ", 向服务器正式发起请求: " + p);
+
                     // 发送服务端
                     sock.write(p.bb);
 
-                    // 发送完了
                     if (!p.bb.hasRemaining()) {
                         sentCount++;
                         // 从待发送队列中移除该packet
                         outgoingQueue.removeFirstOccurrence(p);
-                        if (p.requestHeader != null
-                                && p.requestHeader.getType() != OpCode.ping
-                                && p.requestHeader.getType() != OpCode.auth) {
+                        if (p.requestHeader != null && p.requestHeader.getType() != OpCode.ping && p.requestHeader.getType() != OpCode.auth) {
                             synchronized (pendingQueue) {
                                 // 加入待回复的队列
+                                System.out.println("时间: " + System.nanoTime() + ", 客户端将请求放入pendingQueue等待回复, p: " + p);
                                 pendingQueue.add(p);
                             }
                         }
@@ -255,6 +258,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                 LOG.debug("SendThread interrupted during sleep, ignoring");
             }
         }
+        // 将sockKey置null, 外层的while大循环的clientCnxnSocket.isConnected()就返回false了
         sockKey = null;
     }
  
@@ -300,6 +304,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
          * 这边调用之后, 服务端NIOServerCnxnFactory的run方法里面的if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0)就为true
          * 表明监听到了连接建立事件
          */
+        System.out.println("时间: " + System.nanoTime() + ", 客户端与服务器建立TCP连接");
         boolean immediateConnect = sock.connect(addr);
         // 如果连接成功. 如果没有立即connect上, 那么就在后面介绍的doTransport中等待SocketChannel finishConnect再调用
         if (immediateConnect) {
@@ -373,7 +378,6 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
     @Override
     void doTransport(int waitTimeOut, List<Packet> pendingQueue, LinkedList<Packet> outgoingQueue, ClientCnxn cnxn)
             throws IOException, InterruptedException {
-
         selector.select(waitTimeOut);
         Set<SelectionKey> selected;
         synchronized (this) {
@@ -391,6 +395,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
             if ((k.readyOps() & SelectionKey.OP_CONNECT) != 0) {
                 if (sc.finishConnect()) {
                     updateLastSendAndHeard();
+                    System.out.println("时间: " + System.nanoTime() + ", 客户端收到服务器响应, 尝试完成TCP连接建立");
                     // 建立连接的核心方法
                     sendThread.primeConnection();
                 }

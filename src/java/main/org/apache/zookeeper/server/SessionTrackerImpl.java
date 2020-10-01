@@ -49,12 +49,13 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
     HashMap<Long, SessionImpl> sessionsById = new HashMap<Long, SessionImpl>();
 
     /**
-     *
+     * 用于根据下次会话超时时间点来归档会话, 便于进行会话管理和超时时间检查
      */
     HashMap<Long, SessionSet> sessionSets = new HashMap<Long, SessionSet>();
 
     /**
      * sessionsWithTimeout, 根据不同的会话ID管理每个会话的超时时间
+     * 该数据结构和ZooKeeper的内存数据库连通, 会被定期持久化到快照文件中去
      */
     ConcurrentHashMap<Long, Integer> sessionsWithTimeout;
 
@@ -64,12 +65,12 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
     long nextSessionId = 0;
 
     /**
-     *
+     * 下次进行会话过期检查的时间, 是expirationInterval的整数倍
      */
     long nextExpirationTime;
 
     /**
-     * 间隔时间
+     * 间隔时间, 默认值是tickTime
      */
     int expirationInterval;
 
@@ -91,6 +92,17 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
         public long getSessionId() { return sessionId; }
         public int getTimeout() { return timeout; }
         public boolean isClosing() { return isClosing; }
+
+        @Override
+        public String toString() {
+            return "SessionImpl{" +
+                    "sessionId=" + sessionId +
+                    ", timeout=" + timeout +
+                    ", tickTime=" + tickTime +
+                    ", isClosing=" + isClosing +
+                    ", owner=" + owner +
+                    '}';
+        }
     }
 
     /**
@@ -99,6 +111,8 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
      *
      * 在SessionTrackerImpl类初始化的时候,首先会调用initializeNextSession方法来生成一个会话ID ,
      * 该会话ID会作为一个唯一的标识符,在ZooKeeper服务之后的运行中用来标记一个特定的会话
+     *
+     * 高8位确定了所在机器, 低56位使用当前时间的毫秒
      */
     public static long initializeNextSession(long id) {
         long nextSid = 0;
@@ -189,6 +203,7 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
                         setSessionClosing(s.sessionId);
                         // 清理会话
                         expirer.expire(s);
+                        System.out.println("时间: " + System.nanoTime() + ", 服务器清理会话: " + s);
                     }
                 }
                 // 扫描线程每次增加一个间隔时间, 扫描看这个时间段有没有要处理的过期的Session
@@ -220,16 +235,20 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
             return true;
         }
 
+        // 会话迁移, 原来放在s.tickTime处的会话移出放到新的过期时间expireTime点去
         SessionSet set = sessionSets.get(s.tickTime);
         if (set != null) {
+            // 移出
             set.sessions.remove(s);
         }
+        // 新的时间点
         s.tickTime = expireTime;
         set = sessionSets.get(s.tickTime);
         if (set == null) {
             set = new SessionSet();
             sessionSets.put(expireTime, set);
         }
+        // 放到新的时间点
         set.sessions.add(s);
         return true;
     }

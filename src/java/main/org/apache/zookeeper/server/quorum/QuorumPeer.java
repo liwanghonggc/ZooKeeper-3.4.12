@@ -299,6 +299,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
      * The servers that make up the cluster
      */
     protected Map<Long, QuorumServer> quorumPeers;
+
     public int getQuorumSize(){
         return getVotingView().size();
     }
@@ -1063,17 +1064,15 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     }
 
     /**
-     * Observers are not contained in this view, only nodes with 
-     * PeerType=PARTICIPANT.
+     * Observers are not contained in this view, only nodes with PeerType=PARTICIPANT.
+     * 返回一个Map, Key为SID, Value为当前集群中的一台服务器(不包含Observer)
      */
     public Map<Long,QuorumPeer.QuorumServer> getVotingView() {
         return QuorumPeer.viewToVotingView(getView());
     }
 
-    static Map<Long,QuorumPeer.QuorumServer> viewToVotingView(
-            Map<Long,QuorumPeer.QuorumServer> view) {
-        Map<Long,QuorumPeer.QuorumServer> ret =
-            new HashMap<Long, QuorumPeer.QuorumServer>();
+    static Map<Long,QuorumPeer.QuorumServer> viewToVotingView(Map<Long,QuorumPeer.QuorumServer> view) {
+        Map<Long,QuorumPeer.QuorumServer> ret = new HashMap<Long, QuorumPeer.QuorumServer>();
         for (QuorumServer server : view.values()) {
             if (server.type == LearnerType.PARTICIPANT) {
                 ret.put(server.id, server);

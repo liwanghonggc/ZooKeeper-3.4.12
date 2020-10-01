@@ -202,9 +202,7 @@ public class FileTxnLog implements TxnLog {
         }
 
         if (hdr.getZxid() <= lastZxidSeen) {
-            LOG.warn("Current zxid " + hdr.getZxid()
-                    + " is <= " + lastZxidSeen + " for "
-                    + hdr.getType());
+            LOG.warn("Current zxid " + hdr.getZxid() + " is <= " + lastZxidSeen + " for " + hdr.getType());
         } else {
             lastZxidSeen = hdr.getZxid();
         }

@@ -221,8 +221,10 @@ public class NIOServerCnxn extends ServerCnxn {
 
             if (!initialized) {
                 // 如果是首次connectRequest
+                System.out.println("时间: " + System.nanoTime() + ", 服务器收到客户端的ConnectRequest");
                 readConnectRequest();
             } else {
+                // 普通请求
                 readRequest();
             }
             lenBuffer.clear();
@@ -260,6 +262,7 @@ public class NIOServerCnxn extends ServerCnxn {
                 return;
             }
             if (k.isReadable()) {
+                System.out.println("时间: " + System.nanoTime() + ", 服务器k is Readable");
                 int rc = sock.read(incomingBuffer);
                 if (rc < 0) {
                     throw new EndOfStreamException(
@@ -291,6 +294,7 @@ public class NIOServerCnxn extends ServerCnxn {
                 }
             }
             if (k.isWritable()) {
+                System.out.println("时间: " + System.nanoTime() + ", 服务器 k is Writable");
                 // ZooLog.logTraceMessage(LOG,
                 // ZooLog.CLIENT_DATA_PACKET_TRACE_MASK
                 // "outgoingBuffers.size() = " +
@@ -841,6 +845,7 @@ public class NIOServerCnxn extends ServerCnxn {
 
         @Override
         public void commandRun() {
+            // 判断服务器的运行状态, 并将相应结果回送给客户端
             if (!isZKServerRunning()) {
                 pw.print("null");
             } else if (zkServer instanceof ReadOnlyZooKeeperServer) {
@@ -894,8 +899,7 @@ public class NIOServerCnxn extends ServerCnxn {
             }
         }
 
-        final PrintWriter pwriter = new PrintWriter(
-                new BufferedWriter(new SendBufferWriter()));
+        final PrintWriter pwriter = new PrintWriter(new BufferedWriter(new SendBufferWriter()));
 
         String cmd = ServerCnxn.getCommandString(len);
         // ZOOKEEPER-2693: don't execute 4lw if it's not enabled.
@@ -967,6 +971,7 @@ public class NIOServerCnxn extends ServerCnxn {
             mntr.start();
             return true;
         } else if (len == isroCmd) {
+            // 处理客户端的isro请求
             IsroCommand isro = new IsroCommand(pwriter);
             isro.start();
             return true;
@@ -984,6 +989,7 @@ public class NIOServerCnxn extends ServerCnxn {
     private boolean readLength(SelectionKey k) throws IOException {
         // Read the length, now get the buffer
         int len = lenBuffer.getInt();
+        // checkFourLetterWord里面会处理客户端发送过来的isro等命令, 判断是不是rwServer
         if (!initialized && checkFourLetterWord(sk, len)) {
             return false;
         }

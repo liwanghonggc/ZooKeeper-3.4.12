@@ -360,9 +360,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
 
     public void expire(Session session) {
         long sessionId = session.getSessionId();
-        LOG.info("Expiring session 0x" + Long.toHexString(sessionId)
-                + ", timeout of " + session.getTimeout() + "ms exceeded");
-        // 通过close函数向整个ZooKeeper服务器发起一次会话过期的请求操作
+        LOG.info("Expiring session 0x" + Long.toHexString(sessionId) + ", timeout of " + session.getTimeout() + "ms exceeded");
+        // 通过close函数告诉ZooKeeper客户端会话过期
         close(sessionId);
     }
 
@@ -649,6 +648,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         ByteBuffer to = ByteBuffer.allocate(4);
         to.putInt(timeout);
         cnxn.setSessionId(sessionId);
+        System.out.println("时间: " + System.nanoTime() + ", 服务器创建会话后, 发送请求告诉客户端会话建立");
         submitRequest(cnxn, sessionId, OpCode.createSession, 0, to, null);
         return sessionId;
     }
@@ -709,7 +709,9 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             baos.close();
             ByteBuffer bb = ByteBuffer.wrap(baos.toByteArray());
             bb.putInt(bb.remaining() - 4).rewind();
-            cnxn.sendBuffer(bb);    
+
+            System.out.println("时间: " + System.nanoTime() + ", 服务器与客户端建立连接完成, 发送ConnectResponse响应");
+            cnxn.sendBuffer(bb);
 
             if (!valid) {
                 LOG.info("Invalid session 0x"
@@ -773,7 +775,10 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             }
         }
         try {
-            // 会话激活
+            /**
+             * 会话激活, 客户端发送Ping包就会在这里被处理
+             * 清理会话时, cnxn为null
+             */
             touch(si.cnxn);
             // 校验是否是有效消息
             boolean validpacket = Request.isValid(si.type);
@@ -981,9 +986,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         long sessionId = connReq.getSessionId();
         if (sessionId != 0) {
             long clientSessionId = connReq.getSessionId();
-            LOG.info("Client attempting to renew session 0x"
-                    + Long.toHexString(clientSessionId)
-                    + " at " + cnxn.getRemoteSocketAddress());
+            LOG.info("Client attempting to renew session 0x" + Long.toHexString(clientSessionId) + " at " + cnxn.getRemoteSocketAddress());
             // 这边是连接建立处理请求, 如果sessionID不为0, 关掉该session, 重新建立一个
             serverCnxnFactory.closeSession(sessionId);
             cnxn.setSessionId(sessionId);
@@ -991,6 +994,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         } else {
             LOG.info("Client attempting to establish new session at " + cnxn.getRemoteSocketAddress());
             // 创建一个Session
+            System.out.println("时间: " + System.nanoTime() + ", 服务器收到客户端的ConnectRequest之后, 尝试创建一个会话");
             createSession(cnxn, passwd, sessionTimeout);
         }
     }
@@ -1064,8 +1068,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             }
             else {
                 // 普通的走到这里
-                Request si = new Request(cnxn, cnxn.getSessionId(), h.getXid(),
-                  h.getType(), incomingBuffer, cnxn.getAuthInfo());
+                Request si = new Request(cnxn, cnxn.getSessionId(), h.getXid(), h.getType(), incomingBuffer, cnxn.getAuthInfo());
                 si.setOwner(ServerCnxn.me);
                 submitRequest(si);
             }
@@ -1124,8 +1127,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         if (opCode == OpCode.createSession) {
             if (txn instanceof CreateSessionTxn) {
                 CreateSessionTxn cst = (CreateSessionTxn) txn;
-                sessionTracker.addSession(sessionId, cst
-                        .getTimeOut());
+                sessionTracker.addSession(sessionId, cst.getTimeOut());
             } else {
                 LOG.warn("*****>>>>> Got "
                         + txn.getClass() + " "

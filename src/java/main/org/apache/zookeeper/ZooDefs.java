@@ -20,10 +20,15 @@ package org.apache.zookeeper;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
+import com.google.common.collect.ImmutableMultimap;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Id;
+
+import static org.apache.zookeeper.ZooDefs.OpCode.*;
 
 @InterfaceAudience.Public
 public class ZooDefs {
@@ -69,6 +74,32 @@ public class ZooDefs {
         public final int closeSession = -11;
 
         public final int error = -1;
+    }
+
+    public static final Map<Integer, String> opCodeNamesMap;
+
+    static {
+        opCodeNamesMap = new HashMap<>();
+        opCodeNamesMap.put(notification, "notification");
+        opCodeNamesMap.put(create, "create");
+        opCodeNamesMap.put(delete, "delete");
+        opCodeNamesMap.put(exists, "exists");
+        opCodeNamesMap.put(getData, "getData");
+        opCodeNamesMap.put(setData, "setData");
+        opCodeNamesMap.put(getACL, "getACL");
+        opCodeNamesMap.put(setACL, "setACL");
+        opCodeNamesMap.put(getChildren, "getChildren");
+        opCodeNamesMap.put(sync, "sync");
+        opCodeNamesMap.put(ping, "ping");
+        opCodeNamesMap.put(getChildren2, "getChildren2");
+        opCodeNamesMap.put(check, "check");
+        opCodeNamesMap.put(multi, "multi");
+        opCodeNamesMap.put(auth, "auth");
+        opCodeNamesMap.put(setWatches, "setWatches");
+        opCodeNamesMap.put(sasl, "sasl");
+        opCodeNamesMap.put(createSession, "createSession");
+        opCodeNamesMap.put(closeSession, "closeSession");
+        opCodeNamesMap.put(error, "error");
     }
 
     @InterfaceAudience.Public

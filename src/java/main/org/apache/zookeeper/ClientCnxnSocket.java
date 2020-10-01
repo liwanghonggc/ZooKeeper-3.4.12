@@ -144,6 +144,7 @@ abstract class ClientCnxnSocket {
 
         // 获取服务器返回的SessionID
         this.sessionId = conRsp.getSessionId();
+        System.out.println("时间: " + System.nanoTime() + ", 客户端与服务器连接建立完成");
         sendThread.onConnected(conRsp.getTimeOut(), this.sessionId, conRsp.getPasswd(), isRO);
     }
 

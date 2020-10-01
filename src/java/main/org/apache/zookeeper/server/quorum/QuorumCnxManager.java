@@ -123,17 +123,19 @@ public class QuorumCnxManager {
 
     /*
      * Mapping from Peer to Thread number
-     * Long是Sid
+     * Long是Sid, 按照SID进行分组
+     * 每个SendWorker消息发送器, 都对应一台远程ZooKeeper服务器, 负责消息的发送
      */
     final ConcurrentHashMap<Long, SendWorker> senderWorkerMap;
 
     /**
      * Long是Sid, 发送到哪个服务器的信息
+     * 按照SID进行分组, 分别为集群中的每台机器分配了一个单独的队列, 从而保证各台机器之间的消息互不影响
      */
     final ConcurrentHashMap<Long, ArrayBlockingQueue<ByteBuffer>> queueSendMap;
 
     /**
-     * 上一次发送的
+     * 最近发送过的消息, 在这个集合中, 为每个SID保留最近发送的一个消息
      */
     final ConcurrentHashMap<Long, ByteBuffer> lastMessageSent;
 
@@ -392,8 +394,7 @@ public class QuorumCnxManager {
     public void receiveConnection(final Socket sock) {
         DataInputStream din = null;
         try {
-            din = new DataInputStream(
-                    new BufferedInputStream(sock.getInputStream()));
+            din = new DataInputStream(new BufferedInputStream(sock.getInputStream()));
 
             handleConnection(sock, din);
         } catch (IOException e) {
@@ -479,7 +480,11 @@ public class QuorumCnxManager {
         LOG.debug("Authenticating learner server.id: {}", sid);
         authServer.authenticate(sock, din);
 
-        //If wins the challenge, then close the new connection.
+        /**
+         * If wins the challenge, then close the new connection.
+         * 避免两台机器之间重复的创建TCP连接, 规定只允许SID大的服务器主动和其他服务器建立连接,
+         * 否则断开连接, 然后自己主动去和远程服务器建立连接
+         */
         if (sid < this.mySid) {
             /*
              * This replica might still believe that the connection to sid is
@@ -500,6 +505,7 @@ public class QuorumCnxManager {
 
             // Otherwise start worker threads to receive data.
         } else {
+            // 建立连接之后, 根据远程服务器的SID来创建相应的消息发送器SendWorker和消息接收器RecvWorker, 并启动它们
             SendWorker sw = new SendWorker(sock, sid);
             RecvWorker rw = new RecvWorker(sock, din, sid, sw);
             sw.setRecv(rw);
@@ -812,8 +818,9 @@ public class QuorumCnxManager {
 
     /**
      * Thread to send messages. Instance waits on a queue, and send a message as
-     * soon as there is one available. If connection breaks, then opens a new
-     * one.
+     * soon as there is one available. If connection breaks, then opens a new one.
+     * 每个SendWorker只需要不断的从对应的消息发送队列中获取一个消息来发送即可, 同时将这个消息
+     * 放入lastMessageSent中来作为最近发送过的消息.
      */
     class SendWorker extends ZooKeeperThread {
         Long sid;
@@ -969,6 +976,8 @@ public class QuorumCnxManager {
     /**
      * Thread to receive messages. Instance waits on a socket read. If the
      * channel breaks, then removes itself from the pool of receivers.
+     * 消息的接收过程由消息接收器RecvWorker来负责, ZooKeeper会为每个远程服务器分配一个单独的RecvWorker,
+     * 每个RecvWorker只需要不断地从TCP连接读取消息, 并将其保存到RecvQueue队列中
      */
     class RecvWorker extends ZooKeeperThread {
         Long sid;

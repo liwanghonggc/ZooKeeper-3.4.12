@@ -504,8 +504,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                     zks.sessionTracker.setSessionClosing(request.sessionId);
                 }
 
-                LOG.info("Processed session termination for sessionid: 0x"
-                        + Long.toHexString(request.sessionId));
+                LOG.info("Processed session termination for sessionid: 0x" + Long.toHexString(request.sessionId));
                 break;
             case OpCode.check:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
@@ -652,6 +651,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             //create/close session don't require request record
             case OpCode.createSession:
             case OpCode.closeSession:
+                System.out.println("时间: " + System.nanoTime() + ", 服务器处理Session相关请求, type: " + request.type);
                 pRequest2Txn(request.type, zks.getNextZxid(), request, null, true);
                 break;
  

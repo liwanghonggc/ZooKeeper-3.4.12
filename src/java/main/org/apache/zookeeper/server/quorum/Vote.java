@@ -26,8 +26,7 @@ import org.slf4j.LoggerFactory;
 public class Vote {
     private static final Logger LOG = LoggerFactory.getLogger(Vote.class);
     
-    public Vote(long id, 
-                    long zxid) {
+    public Vote(long id, long zxid) {
         this.version = 0x0;
         this.id = id;
         this.zxid = zxid;
@@ -87,14 +86,31 @@ public class Vote {
     }
     
     final private int version;
-    
+
+    /**
+     * 被推举的Leader的SID值, SID用来唯一标识一台集群中的机器, 和myid一致
+     */
     final private long id;
-    
+
+    /**
+     * 被推举的Leader的事务ID
+     */
     final private long zxid;
-    
+
+    /**
+     * 逻辑时钟, 用来判断多个投票是否在同一轮选举周期内, 该值在服务端是一个自增序列, 每次进入新一轮投票后, 都会对该值进行加一操作
+     */
     final private long electionEpoch;
-    
+
+    /**
+     * 被推举的Leader的epoch
+     */
     final private long peerEpoch;
+
+    /**
+     * 当前服务器状态
+     */
+    final private ServerState state;
     
     public int getVersion() {
         return version;
@@ -119,8 +135,6 @@ public class Vote {
     public ServerState getState() {
         return state;
     }
-
-    final private ServerState state;
     
     @Override
     public boolean equals(Object o) {

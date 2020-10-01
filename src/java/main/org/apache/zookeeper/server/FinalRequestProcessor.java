@@ -184,9 +184,9 @@ public class FinalRequestProcessor implements RequestProcessor {
                 zks.serverStats().updateLatency(request.createTime);
 
                 lastOp = "SESS";
-                cnxn.updateStatsForResponse(request.cxid, request.zxid, lastOp,
-                        request.createTime, Time.currentElapsedTime());
+                cnxn.updateStatsForResponse(request.cxid, request.zxid, lastOp, request.createTime, Time.currentElapsedTime());
 
+                // 这里面会对ConnectRequest进行回应, 构造ConnectResponse
                 zks.finishSessionInit(request.cnxn, true);
                 return;
             }
@@ -397,8 +397,7 @@ public class FinalRequestProcessor implements RequestProcessor {
         ReplyHeader hdr = new ReplyHeader(request.cxid, lastZxid, err.intValue());
 
         zks.serverStats().updateLatency(request.createTime);
-        cnxn.updateStatsForResponse(request.cxid, lastZxid, lastOp,
-                    request.createTime, Time.currentElapsedTime());
+        cnxn.updateStatsForResponse(request.cxid, lastZxid, lastOp, request.createTime, Time.currentElapsedTime());
 
         try {
             // 发送响应

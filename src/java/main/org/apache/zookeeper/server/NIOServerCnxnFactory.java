@@ -216,7 +216,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                     // 连接建立事件
                     if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
                         // ClientCnxnSocketNIO.registerAndConnect方法调用之后, 这边会感知到
-                        System.out.println("接收到连接建立事件");
+                        System.out.println("时间: " + System.nanoTime() + ", 服务器接收到TCP连接建立事件");
                         // 拿到与客户端的连接通道
                         SocketChannel sc = ((ServerSocketChannel) k.channel()).accept();
                         InetAddress ia = sc.socket().getInetAddress();
@@ -240,7 +240,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                     }
                     // 读或写事件
                     else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
-                        System.out.println("接收到读或写事件");
+                        System.out.println("时间: " + System.nanoTime() + ", 服务器接收到读或写事件");
                         NIOServerCnxn c = (NIOServerCnxn) k.attachment();
                         c.doIO(k);
                     } else {

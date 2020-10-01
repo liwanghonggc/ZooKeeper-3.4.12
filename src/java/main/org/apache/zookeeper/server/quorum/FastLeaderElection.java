@@ -242,6 +242,13 @@ public class FastLeaderElection implements Election {
          * method run(), and processes such messages.
          *
          * 工作线程
+         * 选票接收器. 该接收器会不断地从QuorumCnxManager中获取出其他服务器发来的选票信息, 并将其转换为一个选票, 然后保存到
+         * recvqueue队列中去. 在选票接收过程中, 如果发现该外部投票的选举轮次小于当前的服务器, 那么就直接忽略这个外部投票,
+         * 同时立即发出自己的内部投票.
+         *
+         * 如果当前服务器并不是LOOKING状态, 即已经选出了Leader, 那么也将忽略这个外部投票, 同时将Leader信息以投票的形式发送出去
+         * 如果接收到来自Observer服务器的消息, 会忽略这个消息, 同时将自己的选票信息发放出去
+         *
          */
 
         class WorkerReceiver extends ZooKeeperThread {
@@ -430,6 +437,7 @@ public class FastLeaderElection implements Election {
          * and queues it on the manager's queue.
          *
          * 工作线程, 解耦的, 从sendQueue里面获取消息发送给网络
+         * 会不断的从sendQueue里面获取待发送的选票, 并将其传递到底层的QuorumCnxManager中去
          */
 
         class WorkerSender extends ZooKeeperThread {
@@ -594,6 +602,7 @@ public class FastLeaderElection implements Election {
      * Send notifications to all peers upon a change in our vote
      */
     private void sendNotifications() {
+        // self.getVotingView().values()是集群中的所有参选的机器
         for (QuorumServer server : self.getVotingView().values()) {
             long sid = server.id;
 
@@ -628,6 +637,7 @@ public class FastLeaderElection implements Election {
     protected boolean totalOrderPredicate(long newId, long newZxid, long newEpoch, long curId, long curZxid, long curEpoch) {
         LOG.debug("id: " + newId + ", proposed id: " + curId + ", zxid: 0x" +
                 Long.toHexString(newZxid) + ", proposed zxid: 0x" + Long.toHexString(curZxid));
+        // 默认为false
         if(self.getQuorumVerifier().getWeight(newId) == 0){
             return false;
         }
@@ -651,9 +661,7 @@ public class FastLeaderElection implements Election {
      *
      *
      */
-    protected boolean termPredicate(
-            HashMap<Long, Vote> votes,
-            Vote vote) {
+    protected boolean termPredicate(HashMap<Long, Vote> votes, Vote vote) {
 
         HashSet<Long> set = new HashSet<Long>();
 
@@ -816,8 +824,7 @@ public class FastLeaderElection implements Election {
     public Vote lookForLeader() throws InterruptedException {
         try {
             self.jmxLeaderElectionBean = new LeaderElectionBean();
-            MBeanRegistry.getInstance().register(
-                    self.jmxLeaderElectionBean, self.jmxLocalPeerBean);
+            MBeanRegistry.getInstance().register(self.jmxLeaderElectionBean, self.jmxLocalPeerBean);
         } catch (Exception e) {
             LOG.warn("Failed to register with JMX", e);
             self.jmxLeaderElectionBean = null;
@@ -834,15 +841,24 @@ public class FastLeaderElection implements Election {
             int notTimeout = finalizeWait;
 
             synchronized(this){
-                // 初始化轮次
+                /**
+                 * 1) 初始化轮次. logicalclock用于标识当前Leader的选举轮次, ZooKeeper规定了所有有效的投票必须在同一个轮次中
+                 *    ZooKeeper在开始新一轮投票时, 会首先对logicalclock进行自增操作
+                 */
                 logicalclock.incrementAndGet();
-                // 更新选票
+
+                /**
+                 * 2) 初始化选票. 在初始化阶段, 每台服务器都会将自己推举为Leader
+                 */
                 updateProposal(getInitId(), getInitLastLoggedZxid(), getPeerEpoch());
             }
 
             LOG.info("New election. My id =  " + self.getId() + ", proposed zxid=0x" + Long.toHexString(proposedZxid));
 
-            // 发送选票信息
+            /**
+             * 3) 发送选票信息. 在完成选票初始化之后, 服务器会发起第一次投票, 将刚刚初始化好的选票放入sendQueue队列中,
+             *    由WorkerSender负责发送出去
+             */
             sendNotifications();
 
             /*
@@ -852,7 +868,7 @@ public class FastLeaderElection implements Election {
             while ((self.getPeerState() == ServerState.LOOKING) && (!stop)){
                 /*
                  * Remove next notification from queue, times out after 2 times the termination time
-                 * 获取其他人发送过来的选票信息
+                 * 不断地从recvqueue里面获取其他人发送过来的选票信息
                  */
                 Notification n = recvqueue.poll(notTimeout, TimeUnit.MILLISECONDS);
 
@@ -875,7 +891,7 @@ public class FastLeaderElection implements Election {
                             tmpTimeOut : maxNotificationInterval);
                     LOG.info("Notification time out: " + notTimeout);
                 }
-                // 判断收到的是不是有效的选票信息, 不是的话直接丢弃
+                // 判断收到的消息的sid是不是在集群中的机器
                 else if(self.getVotingView().containsKey(n.sid)) {
                     /*
                      * Only proceed if the vote comes from a replica in the voting view.
@@ -892,8 +908,7 @@ public class FastLeaderElection implements Election {
                             // 进入新的轮次了, 清空票箱
                             recvset.clear();
                             // 选票PK, n是收到的、后面是自己的, 两者PK下
-                            if(totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
-                                    getInitId(), getInitLastLoggedZxid(), getPeerEpoch())) {
+                            if(totalOrderPredicate(n.leader, n.zxid, n.peerEpoch, getInitId(), getInitLastLoggedZxid(), getPeerEpoch())) {
                                 // 如果对方大, 我们就更新下
                                 updateProposal(n.leader, n.zxid, n.peerEpoch);
                             } else {
@@ -927,28 +942,27 @@ public class FastLeaderElection implements Election {
                         recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
 
                         // 判断选票是否终止
-                        if (termPredicate(recvset,
-                                new Vote(proposedLeader, proposedZxid,
-                                        logicalclock.get(), proposedEpoch))) {
+                        if (termPredicate(recvset, new Vote(proposedLeader, proposedZxid, logicalclock.get(), proposedEpoch))) {
 
-                            // Verify if there is any change in the proposed leader
-                            while((n = recvqueue.poll(finalizeWait,
-                                    TimeUnit.MILLISECONDS)) != null){
-                                if(totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
-                                        proposedLeader, proposedZxid, proposedEpoch)){
+                            /**
+                             * Verify if there is any change in the proposed leader
+                             * 走到这里就是统计投票发现已经有过半的服务器认可了当前的投票, 这时候ZooKeeper服务器并不会
+                             * 立即更新服务器状态, 而是等一会(默认200ms)来确定是否有更优的投票
+                             */
+                            while((n = recvqueue.poll(finalizeWait, TimeUnit.MILLISECONDS)) != null){
+                                if(totalOrderPredicate(n.leader, n.zxid, n.peerEpoch, proposedLeader, proposedZxid, proposedEpoch)){
                                     recvqueue.put(n);
                                     break;
                                 }
                             }
 
                             /*
-                             * This predicate is true once we don't read any new
-                             * relevant message from the reception queue
+                             * This predicate is true once we don't read any new relevant message from the reception queue
                              * 等待一段时间还是没有拿到信息, 更新节点状态信息
                              */
                             if (n == null) {
-                                self.setPeerState((proposedLeader == self.getId()) ?
-                                        ServerState.LEADING: learningState());
+                                // 更新服务器状态, 判断是不是自己是Leader, 不是的话再更新为Follow或者ObServer
+                                self.setPeerState((proposedLeader == self.getId()) ? ServerState.LEADING: learningState());
 
                                 Vote endVote = new Vote(proposedLeader,
                                                         proposedZxid,
@@ -1032,8 +1046,7 @@ public class FastLeaderElection implements Election {
                 LOG.warn("Failed to unregister with JMX", e);
             }
             self.jmxLeaderElectionBean = null;
-            LOG.debug("Number of connection processing threads: {}",
-                    manager.getConnectionThreadCount());
+            LOG.debug("Number of connection processing threads: {}", manager.getConnectionThreadCount());
         }
     }
 }
