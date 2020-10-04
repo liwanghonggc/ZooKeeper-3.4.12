@@ -259,7 +259,11 @@ public class FileSnap implements SnapShot {
             //CheckedOutputStream cout = new CheckedOutputStream()
             OutputArchive oa = BinaryOutputArchive.getArchive(crcOut);
             FileHeader header = new FileHeader(SNAP_MAGIC, VERSION, dbId);
+
+            // 序列化文件头、session信息、DataTree
             serialize(dt, sessions, oa, header);
+
+            // 计算checkSum
             long val = crcOut.getChecksum().getValue();
             oa.writeLong(val, "val");
             oa.writeString("/", "path");

@@ -151,8 +151,7 @@ public class QuorumPeerMain {
       LOG.info("Starting quorum peer");
       try {
           ServerCnxnFactory cnxnFactory = ServerCnxnFactory.createFactory();
-          cnxnFactory.configure(config.getClientPortAddress(),
-                                config.getMaxClientCnxns());
+          cnxnFactory.configure(config.getClientPortAddress(), config.getMaxClientCnxns());
 
           /**
            * 在 ZooKeeper 服务的集群模式启动过程中,一个最主要的核心类是 QuorumPeer 类.
@@ -173,13 +172,13 @@ public class QuorumPeerMain {
 
           /**
            * 在 ZooKeeper 集群中,Leader 服务器负责管理集群中其他角色服务器,以及处理客户端的数据变更请求.
-           * 因此,在整个 ZooKeeper 服务器中,Leader 服务器非常重要.所以在整个 ZooKeeper 集群启动过程中,
-           * 首先要先选举出集群中的 Leader 服务器.
+           * 因此,在整个ZooKeeper服务器中,Leader服务器非常重要.所以在整个ZooKeeper集群启动过程中,
+           * 首先要先选举出集群中的Leader服务器.
            *
-           * 在 ZooKeeper 集群选举 Leader 节点的过程中,首先会根据服务器自身的服务器 ID(SID)、
-           * 最新的 ZXID、和当前的服务器 epoch (currentEpoch)这三个参数来生成一个选举标准.
-           * 之后, ZooKeeper 服务会根据 zoo.cfg 配置文件中的参数,选择参数文件中规定的 Leader 选举算法,
-           * 进行 Leader 头节点的选举操作.而在 ZooKeeper 中提供了三种 Leader 选举算法,分别是
+           * 在ZooKeeper集群选举Leader节点的过程中,首先会根据服务器自身的服务器 ID(SID)、
+           * 最新的ZXID、和当前的服务器 epoch (currentEpoch)这三个参数来生成一个选举标准.
+           * 之后, ZooKeeper 服务会根据 zoo.cfg 配置文件中的参数,选择参数文件中规定的Leader选举算法,
+           * 进行Leader头节点的选举操作.而在ZooKeeper中提供了三种Leader选举算法,分别是
            * LeaderElection 、AuthFastLeaderElection、FastLeaderElection.在我们日常开发过程中,
            * 可以通过在 zoo.cfg 配置文件中使用 electionAlg 参数属性来制定具体要使用的算法类型
            */

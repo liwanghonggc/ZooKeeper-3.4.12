@@ -321,13 +321,12 @@ public class FileTxnSnapLog {
      * serialized onto disk
      * @throws IOException
      */
-    public void save(DataTree dataTree,
-                     ConcurrentHashMap<Long, Integer> sessionsWithTimeouts)
+    public void save(DataTree dataTree, ConcurrentHashMap<Long, Integer> sessionsWithTimeouts)
             throws IOException {
         long lastZxid = dataTree.lastProcessedZxid;
+        // 生成快照数据文件, 文件名也是以ZXID为后缀
         File snapshotFile = new File(snapDir, Util.makeSnapshotName(lastZxid));
-        LOG.info("Snapshotting: 0x{} to {}", Long.toHexString(lastZxid),
-                snapshotFile);
+        LOG.info("Snapshotting: 0x{} to {}", Long.toHexString(lastZxid), snapshotFile);
         snapLog.serialize(dataTree, sessionsWithTimeouts, snapshotFile);
 
     }

@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -32,7 +32,7 @@ import org.apache.zookeeper.server.ZKDatabase;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 
 /**
- * 
+ *
  * Just like the standard ZooKeeperServer. We just replace the request
  * processors: PrepRequestProcessor -> ProposalRequestProcessor ->
  * CommitProcessor -> Leader.ToBeAppliedRequestProcessor ->
@@ -42,17 +42,15 @@ public class LeaderZooKeeperServer extends QuorumZooKeeperServer {
     CommitProcessor commitProcessor;
 
     /**
-     * @param port
-     * @param dataDir
      * @throws IOException
      */
     LeaderZooKeeperServer(FileTxnSnapLog logFactory, QuorumPeer self,
-            DataTreeBuilder treeBuilder, ZKDatabase zkDb) throws IOException {
+                          DataTreeBuilder treeBuilder, ZKDatabase zkDb) throws IOException {
         super(logFactory, self.tickTime, self.minSessionTimeout,
                 self.maxSessionTimeout, treeBuilder, zkDb, self);
     }
 
-    public Leader getLeader(){
+    public Leader getLeader() {
         return self.leader;
     }
 
@@ -63,34 +61,35 @@ public class LeaderZooKeeperServer extends QuorumZooKeeperServer {
     @Override
     protected void setupRequestProcessors() {
         RequestProcessor finalProcessor = new FinalRequestProcessor(this);
-        RequestProcessor toBeAppliedProcessor = new Leader.ToBeAppliedRequestProcessor(
-                finalProcessor, getLeader().toBeApplied);
-        commitProcessor = new CommitProcessor(toBeAppliedProcessor,
-                Long.toString(getServerId()), false,
-                getZooKeeperServerListener());
+        // toBeAppliedRequestProcessor下一个处理器时finalRequestProcessor
+        RequestProcessor toBeAppliedProcessor = new Leader.ToBeAppliedRequestProcessor(finalProcessor, getLeader().toBeApplied);
+
+        // commitProcessor的下一个处理器是toBeAppliedRequestProcessor
+        commitProcessor = new CommitProcessor(toBeAppliedProcessor, Long.toString(getServerId()), false, getZooKeeperServerListener());
         commitProcessor.start();
-        ProposalRequestProcessor proposalProcessor = new ProposalRequestProcessor(this,
-                commitProcessor);
+
+        ProposalRequestProcessor proposalProcessor = new ProposalRequestProcessor(this, commitProcessor);
         proposalProcessor.initialize();
+
         firstProcessor = new PrepRequestProcessor(this, proposalProcessor);
-        ((PrepRequestProcessor)firstProcessor).start();
+        ((PrepRequestProcessor) firstProcessor).start();
     }
 
     @Override
     public int getGlobalOutstandingLimit() {
         return super.getGlobalOutstandingLimit() / (self.getQuorumSize() - 1);
     }
-    
+
     @Override
     public void createSessionTracker() {
         sessionTracker = new SessionTrackerImpl(this, getZKDatabase()
                 .getSessionWithTimeOuts(), tickTime, self.getId(),
                 getZooKeeperServerListener());
     }
-    
+
     @Override
     protected void startSessionTracker() {
-        ((SessionTrackerImpl)sessionTracker).start();
+        ((SessionTrackerImpl) sessionTracker).start();
     }
 
 
@@ -111,8 +110,7 @@ public class LeaderZooKeeperServer extends QuorumZooKeeperServer {
     }
 
     public void registerJMX(LeaderBean leaderBean,
-            LocalPeerBean localPeerBean)
-    {
+                            LocalPeerBean localPeerBean) {
         // register with JMX
         if (self.jmxLeaderElectionBean != null) {
             try {
@@ -156,7 +154,7 @@ public class LeaderZooKeeperServer extends QuorumZooKeeperServer {
         }
         jmxServerBean = null;
     }
-    
+
     @Override
     public String getState() {
         return "leader";
@@ -169,11 +167,11 @@ public class LeaderZooKeeperServer extends QuorumZooKeeperServer {
     @Override
     public long getServerId() {
         return self.getId();
-    }    
-    
+    }
+
     @Override
     protected void revalidateSession(ServerCnxn cnxn, long sessionId,
-        int sessionTimeout) throws IOException {
+                                     int sessionTimeout) throws IOException {
         super.revalidateSession(cnxn, sessionId, sessionTimeout);
         try {
             // setowner as the leader itself, unless updated

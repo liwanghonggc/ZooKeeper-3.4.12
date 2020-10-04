@@ -129,6 +129,7 @@ abstract class ClientCnxnSocket {
         ByteBufferInputStream bbis = new ByteBufferInputStream(incomingBuffer);
         BinaryInputArchive bbia = BinaryInputArchive.getArchive(bbis);
         ConnectResponse conRsp = new ConnectResponse();
+        // 反序列化得到响应, 并从中得到服务器分配的会话sessionId
         conRsp.deserialize(bbia, "connect");
 
         // read "is read-only" flag

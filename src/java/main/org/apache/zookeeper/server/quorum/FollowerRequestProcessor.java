@@ -30,8 +30,10 @@ import org.apache.zookeeper.server.ZooKeeperCriticalThread;
 import org.apache.zookeeper.server.ZooTrace;
 
 /**
- * This RequestProcessor forwards any requests that modify the state of the
- * system to the Leader.
+ * This RequestProcessor forwards any requests that modify the state of the system to the Leader.
+ * 它是Follower服务器的第一个请求处理器, 主要是识别出当前请求是否是事务请求. 如果是事务请求, 那么Follower就会
+ * 将该事务请求转发给leader服务器. Leader服务器在接收到这个事务请求之后, 就会将其提交到请求处理链, 按照正常
+ * 事务请求进行处理
  */
 public class FollowerRequestProcessor extends ZooKeeperCriticalThread implements
         RequestProcessor {
@@ -47,8 +49,7 @@ public class FollowerRequestProcessor extends ZooKeeperCriticalThread implements
 
     public FollowerRequestProcessor(FollowerZooKeeperServer zks,
             RequestProcessor nextProcessor) {
-        super("FollowerRequestProcessor:" + zks.getServerId(), zks
-                .getZooKeeperServerListener());
+        super("FollowerRequestProcessor:" + zks.getServerId(), zks.getZooKeeperServerListener());
         this.zks = zks;
         this.nextProcessor = nextProcessor;
     }
@@ -69,12 +70,16 @@ public class FollowerRequestProcessor extends ZooKeeperCriticalThread implements
                 // the request to the leader so that we are ready to receive
                 // the response
                 nextProcessor.processRequest(request);
-                
-                // We now ship the request to the leader. As with all
-                // other quorum operations, sync also follows this code
-                // path, but different from others, we need to keep track
-                // of the sync operations this follower has pending, so we
-                // add it to pendingSyncs.
+
+                /**
+                 * We now ship the request to the leader. As with all other quorum operations,
+                 * sync also follows this code path, but different from others, we need to keep track
+                 * of the sync operations this follower has pending, so we add it to pendingSyncs.
+                 *
+                 * 所有非Leader服务器如果接收到了来自客户端的事务请求, 那么必须将其转发给Leader服务器来处理
+                 * 如果是事务请求, 该请求将被以REQUEST消息的形式转给给Leader服务器, Leader服务器在接收到这个消息
+                 * 之后, 会解析出客户端的原始请求, 然后提交到自己的请求处理链中开始进行事务请求的处理
+                 */
                 switch (request.type) {
                 case OpCode.sync:
                     zks.pendingSyncs.add(request);

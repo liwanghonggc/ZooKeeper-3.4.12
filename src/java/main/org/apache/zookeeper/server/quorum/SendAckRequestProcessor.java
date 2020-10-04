@@ -28,6 +28,12 @@ import org.apache.zookeeper.ZooDefs.OpCode;
 import org.apache.zookeeper.server.Request;
 import org.apache.zookeeper.server.RequestProcessor;
 
+/**
+ * Leader服务器上有一个AckRequestProcessor的请求处理器, 负责在SyncRequestProcessor处理器完成事务日志之后, 向Proposal的投票器进行反馈.
+ * 而在Follow服务器上, SendAckRequestProcessor处理器同样承担了事务日志记录反馈的角色, 在完成事务日志记录之后, 会向Leader服务器发送ACK
+ * 消息以表明自身完成了事务日志的记录工作. 两者的唯一区别在于, AckRequestProcessor处理器和Leader服务器在同一个服务器上面, 因此它的ACK
+ * 反馈仅仅是一个本地操作, 而SendAckRequestProcessor处理器由于在Follow服务器上, 因此需要通过以ACK消息的形式来向Leader服务器进行反馈
+ */
 public class SendAckRequestProcessor implements RequestProcessor, Flushable {
     private static final Logger LOG = LoggerFactory.getLogger(SendAckRequestProcessor.class);
     

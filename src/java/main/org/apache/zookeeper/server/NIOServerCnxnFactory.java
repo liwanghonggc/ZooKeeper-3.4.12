@@ -124,6 +124,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
         // 加载数据
         zks.startdata();
 
+        // 这里面会设置会话管理器、请求处理链
         zks.startup();
     }
 
@@ -241,6 +242,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                     // 读或写事件
                     else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
                         System.out.println("时间: " + System.nanoTime() + ", 服务器接收到读或写事件");
+                        // 每个会话对应一个NIOServerCnxn实体
                         NIOServerCnxn c = (NIOServerCnxn) k.attachment();
                         c.doIO(k);
                     } else {

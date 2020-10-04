@@ -100,8 +100,7 @@ public class Leader {
     }
 
     // list of followers that are ready to follow (i.e synced with the leader)
-    private final HashSet<LearnerHandler> forwardingFollowers =
-            new HashSet<LearnerHandler>();
+    private final HashSet<LearnerHandler> forwardingFollowers = new HashSet<LearnerHandler>();
 
     /**
      * Returns a copy of the current forwarding follower snapshot
@@ -324,8 +323,7 @@ public class Leader {
                         s.setSoTimeout(self.tickTime * self.initLimit);
                         s.setTcpNoDelay(nodelay);
 
-                        BufferedInputStream is = new BufferedInputStream(
-                                s.getInputStream());
+                        BufferedInputStream is = new BufferedInputStream(s.getInputStream());
 
                         /**
                          * 在接收到来自Leader服务器的通知后,Follow服务器会创建一个LearnerHandler类的实例,用来处理与Leader服务器的数据同步等操作
@@ -390,10 +388,10 @@ public class Leader {
             /**
              * Start thread that waits for connection requests from new followers.
              *
-             * 在服务器的启动过程中,Follow 机器的主要工作就是和 Leader 节点进行数据同步和交互.
-             * 当 Leader 机器启动成功后,Follow 节点的机器会收到来自 Leader 节点的启动通知.
-             * 而该通知则是通过 LearnerCnxAcceptor 类来实现的.该类就相当于一个接收器.
-             * 专门用来接收来自集群中 Leader 节点的通知信息.
+             * 在服务器的启动过程中,Follow 机器的主要工作就是和Leader节点进行数据同步和交互.
+             * 当Leader机器启动成功后,Follow节点的机器会收到来自Leader节点的启动通知.
+             * 而该通知则是通过LearnerCnxAcceptor类来实现的.该类就相当于一个接收器.
+             * 专门用来接收来自集群中Leader节点的通知信息.
              */
             cnxAcceptor = new LearnerCnxAcceptor();
             cnxAcceptor.start();
@@ -407,8 +405,7 @@ public class Leader {
                 lastProposed = zk.getZxid();
             }
 
-            newLeaderProposal.packet = new QuorumPacket(NEWLEADER, zk.getZxid(),
-                    null, null);
+            newLeaderProposal.packet = new QuorumPacket(NEWLEADER, zk.getZxid(), null, null);
 
 
             if ((newLeaderProposal.packet.getZxid() & 0xffffffffL) != 0) {
@@ -637,6 +634,11 @@ public class Leader {
         }
     }
 
+    /**
+     * 它是一个比较特殊的处理器, 它内部维护一个toBeApplied队列, 专门用来存储那些已经被CommitProcessor处理过的可被
+     * 提交的Proposal. 它将这些请求逐个交付给FinalRequestProcessor处理器进行处理, 等到FinalRequestProcessor处理器
+     * 处理完毕之后, 再将其从toBeApplied队列中移除
+     */
     static class ToBeAppliedRequestProcessor implements RequestProcessor {
         private RequestProcessor next;
 
@@ -674,8 +676,7 @@ public class Leader {
             // request.addRQRec(">tobe");
             next.processRequest(request);
             Proposal p = toBeApplied.peek();
-            if (p != null && p.request != null
-                    && p.request.zxid == request.zxid) {
+            if (p != null && p.request != null && p.request.zxid == request.zxid) {
                 toBeApplied.remove();
             }
         }
@@ -770,7 +771,7 @@ public class Leader {
         /**
          * Address the rollover issue. All lower 32bits set indicate a new leader
          * election. Force a re-election instead. See ZOOKEEPER-1277
-         * 判断Zxid是不是最大值
+         * 判断Zxid是不是最大值. 在发起事务投票之前, 会检查当前服务器的ZXID是否可用, 如果不可用会抛出XidRolloverException
          */
         if ((request.zxid & 0xffffffffL) == 0xffffffffL) {
             String msg =
@@ -791,19 +792,25 @@ public class Leader {
             LOG.warn("This really should be impossible", e);
         }
 
-        // PROPOSAL
-        QuorumPacket pp = new QuorumPacket(Leader.PROPOSAL, request.zxid,
-                baos.toByteArray(), null);
+        /**
+         * ZooKeeper会将之前创建的请求头和事务体, 已经ZXID和请求本身放到Proposal对象中
+         * 这里生成的Proposal对象就是一个提议, 即针对ZooKeeper服务器状态的一次变更申请
+         */
+        QuorumPacket pp = new QuorumPacket(Leader.PROPOSAL, request.zxid, baos.toByteArray(), null);
 
         Proposal p = new Proposal();
         p.packet = pp;
         p.request = request;
+
         synchronized (this) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Proposing:: " + request);
             }
 
             lastProposed = p.packet.getZxid();
+            /**
+             * 广播提议. 生成提议之后, Leader服务器就会以ZXID为标识, 将该提议放入投票箱中, 同时会将该提议广播给所有的Follower服务器
+             */
             outstandingProposals.put(lastProposed, p);
             sendPacket(pp);
         }

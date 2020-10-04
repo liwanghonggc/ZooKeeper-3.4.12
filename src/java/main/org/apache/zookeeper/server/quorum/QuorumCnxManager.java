@@ -216,7 +216,10 @@ public class QuorumCnxManager {
         initializeAuth(mySid, authServer, authLearner, quorumCnxnThreadsSize,
                 quorumSaslAuthEnabled);
 
-        // Starts listener thread that waits for connection requests 
+        /**
+         * Starts listener thread that waits for connection requests
+         * 理解是接收各个节点之间的连接, 用来选举Leader节点的
+         */
         listener = new Listener();
     }
 

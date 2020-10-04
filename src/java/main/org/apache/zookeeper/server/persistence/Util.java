@@ -78,9 +78,10 @@ public class Util {
 
     /**
      * Creates a valid transaction log file name. 
-     * 
-     * @param zxid used as a file name suffix (extention)
-     * @return file name
+     * 生成事务日志文件名. 它的后缀就是一个事务ID, 是写入该事务日志文件的第一条事务记录的ID.
+     * 使用事务ID作为文件后缀, 可以帮我们迅速定位到某一个事务操作所在的事务日志. 同时, 使用ZXID
+     * 作为事务日志后缀的优势是, ZXID本身由两部分组成, 高32位表示当前Leader的周期(epoch), 低32
+     * 位则是真正的操作序列号, 借此可以看出当前运行时的ZooKeeper的Leader周期
      */
     public static String makeLogName(long zxid) {
         return FileTxnLog.LOG_FILE_PREFIX + "." + Long.toHexString(zxid);

@@ -90,9 +90,9 @@ public class LearnerHandler extends ZooKeeperThread {
     
     /**
      * The packets to be sent to the learner
+     * 存放要发放给其他服务器的信息. 比如Leader收到会话创建请求之后, 就会生成提议Proposal, 然后广播给其他Follower服务器
      */
-    final LinkedBlockingQueue<QuorumPacket> queuedPackets =
-        new LinkedBlockingQueue<QuorumPacket>();
+    final LinkedBlockingQueue<QuorumPacket> queuedPackets = new LinkedBlockingQueue<QuorumPacket>();
 
     /**
      * This class controls the time that the Leader has been
@@ -165,8 +165,7 @@ public class LearnerHandler extends ZooKeeperThread {
         this.leader = leader;
         this.bufferedInput = bufferedInput;
         try {
-            leader.self.authServer.authenticate(sock,
-                    new DataInputStream(bufferedInput));
+            leader.self.authServer.authenticate(sock, new DataInputStream(bufferedInput));
         } catch (IOException e) {
             LOG.error("Server failed to authenticate quorum learner, addr: {}, closing connection",
                     sock.getRemoteSocketAddress(), e);

@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  *
  * Sync流程
  * 首先我们看一下Sync流程,该流程的底层实现类是SyncRequestProcess类.
- * SyncRequestProcesor类的作用就是在处理事务性请求时,ZooKeeper服务中的每台机器都将该条请求的操作日志记录下来,
+ * SyncRequestProcessor类的作用就是在处理事务性请求时,ZooKeeper服务中的每台机器都将该条请求的操作日志记录下来,
  * 完成这个操作后,每一台机器都会向ZooKeeper服务中的Leader机器发送事物日志记录完成的通知.
  *
  * Proposal流程
@@ -63,11 +63,16 @@ public class ProposalRequestProcessor implements RequestProcessor {
 
     SyncRequestProcessor syncProcessor;
 
-    public ProposalRequestProcessor(LeaderZooKeeperServer zks,
-                                    RequestProcessor nextProcessor) {
+    /**
+     * ProposalRequestProcessor下一步对应两个Processor
+     */
+    public ProposalRequestProcessor(LeaderZooKeeperServer zks, RequestProcessor nextProcessor) {
         this.zks = zks;
+        // 一个是CommitProcessor, 也就是这里通过构造函数传进来的nextProcessor
         this.nextProcessor = nextProcessor;
+
         AckRequestProcessor ackProcessor = new AckRequestProcessor(zks.getLeader());
+        // 还有一个就是SyncRequestProcessor, SyncRequestProcessor接下来的就是AckRequestProcessor
         syncProcessor = new SyncRequestProcessor(zks, ackProcessor);
     }
 
@@ -95,15 +100,26 @@ public class ProposalRequestProcessor implements RequestProcessor {
         if (request instanceof LearnerSyncRequest) {
             zks.getLeader().processSync((LearnerSyncRequest) request);
         } else {
+            // nextProcessor是CommitProcessor
             nextProcessor.processRequest(request);
             // 判断是不是事务消息, 只有事务消息hdr才有值
             if (request.hdr != null) {
-                // We need to sync and get consensus on any transactions
                 try {
+                    /**
+                     * We need to sync and get consensus on any transactions
+                     * Proposal流程. 在ZooKeeper实现中, 每个事务请求都需要集群中的过半机器投票认可才能真正被应用到ZooKeeper的
+                     * 内存数据库中去, 这个过程被称为Proposal过程
+                     */
                     zks.getLeader().propose(request);
                 } catch (XidRolloverException e) {
                     throw new RequestProcessorException(e.getMessage(), e);
                 }
+                /**
+                 * sync流程. 核心就是使用SyncRequestProcessor处理器记录事务日志的过程. ProposalRequestProcessor处理器在接收到
+                 * 上一个上级处理器流转过来的请求时, 首先会判断该请求是否是事务请求, 针对每个事务请求, 都会通过事务日志的形式的将其
+                 * 记录下来. 完成事务日志之后, 每个Follower服务器都会向Leader服务器发送ACK消息, 表明自身完成了事务日志的记录, 以便
+                 * Leader服务器统计每个事务请求的投票情况
+                 */
                 syncProcessor.processRequest(request);
             }
         }

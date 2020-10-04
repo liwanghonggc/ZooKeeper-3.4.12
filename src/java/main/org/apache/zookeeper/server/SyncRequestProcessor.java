@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  *             since it only contains committed txns.
  *             
  * 首先我们看一下Sync流程,该流程的底层实现类是SyncRequestProcess类.
- * SyncRequestProces类的作用就是在处理事务性请求时,ZooKeeper服务中的每台机器都将该条请求的操作日志记录下来,
+ * SyncRequestProcessor类的作用就是在处理事务性请求时,ZooKeeper服务中的每台机器都将该条请求的操作日志记录下来,
  * 完成这个操作后,每一台机器都会向ZooKeeper服务中的Leader机器发送事物日志记录完成的通知.
  */
 public class SyncRequestProcessor extends ZooKeeperCriticalThread implements RequestProcessor {
@@ -65,8 +65,12 @@ public class SyncRequestProcessor extends ZooKeeperCriticalThread implements Req
      */
     private final LinkedList<Request> toFlush = new LinkedList<Request>();
     private final Random r = new Random(System.nanoTime());
+
     /**
      * The number of log entries to log before starting a snapshot
+     * ZooKeeper在进行若干次事务日志记录之后, 将内存数据库的全量数据Dump到本地文件中, 这个过程就是数据快照.
+     * 可以使用snapCount参数来配置每次数据快照之间的事务操作次数, 即ZooKeeper会在snapCount次事务日志记录
+     * 之后进行一个数据快照
      */
     private static int snapCount = ZooKeeperServer.getSnapCount();
     
@@ -78,11 +82,10 @@ public class SyncRequestProcessor extends ZooKeeperCriticalThread implements Req
 
     private final Request requestOfDeath = Request.requestOfDeath;
 
-    public SyncRequestProcessor(ZooKeeperServer zks,
-            RequestProcessor nextProcessor) {
-        super("SyncThread:" + zks.getServerId(), zks
-                .getZooKeeperServerListener());
+    public SyncRequestProcessor(ZooKeeperServer zks, RequestProcessor nextProcessor) {
+        super("SyncThread:" + zks.getServerId(), zks.getZooKeeperServerListener());
         this.zks = zks;
+        // Leader服务器下nextProcessor传进来的是AckRequestProcessor, Follower服务器下nextProcessor传进来的是SendAckRequestProcessor
         this.nextProcessor = nextProcessor;
         running = true;
     }
@@ -122,9 +125,10 @@ public class SyncRequestProcessor extends ZooKeeperCriticalThread implements Req
         try {
             int logCount = 0;
 
-            // we do this in an attempt to ensure that not all of the servers
-            // in the ensemble take a snapshot at the same time
-            // 设置一个随机数
+            /**
+             * we do this in an attempt to ensure that not all of the servers in the ensemble take a snapshot at the same time
+             * 设置一个随机数防止ZooKeeper集群中所有机器都在同一时刻进行数据快照
+             */
             setRandRoll(r.nextInt(snapCount/2));
 
             while (true) {
@@ -150,19 +154,23 @@ public class SyncRequestProcessor extends ZooKeeperCriticalThread implements Req
                     if (zks.getZKDatabase().append(si)) {
                         // 计数
                         logCount++;
-                        // > 随机数才走, 下面会创建新的Log, 为了避免多个zk节点同时创建Log
+                        /**
+                         * > 随机数才走, 下面会创建新的Log, 为了避免多个zk节点同时创建Log
+                         * 如果snapCount是100000, 那么ZooKeeper会在50000~100000次事务日志之后进行一次数据快照
+                         */
                         if (logCount > (snapCount / 2 + randRoll)) {
                             setRandRoll(r.nextInt(snapCount/2));
-                            // roll the log, 创建新的Log
+                            // roll the log, 创建新的Log, 切换事务日志文件
                             zks.getZKDatabase().rollLog();
                             // take a snapshot
                             if (snapInProcess != null && snapInProcess.isAlive()) {
                                 LOG.warn("Too busy to snap, skipping");
                             } else {
-                                // snapShot生成
+                                // snapShot生成, 通过异步线程来进行数据快照
                                 snapInProcess = new ZooKeeperThread("Snapshot Thread") {
                                         public void run() {
                                             try {
+                                                // 数据快照, 其本质就是将内存中所有数据节点信息(DataTree)和会话信息保存到磁盘
                                                 zks.takeSnapshot();
                                             } catch(Exception e) {
                                                 LOG.warn("Unexpected exception", e);

@@ -94,8 +94,7 @@ public class FileTxnLog implements TxnLog {
     static long preAllocSize = 65536 * 1024;
     private static final ByteBuffer fill = ByteBuffer.allocateDirect(1);
 
-    public final static int TXNLOG_MAGIC =
-            ByteBuffer.wrap("ZKLG".getBytes()).getInt();
+    public final static int TXNLOG_MAGIC = ByteBuffer.wrap("ZKLG".getBytes()).getInt();
 
     public final static int VERSION = 2;
 
@@ -131,8 +130,7 @@ public class FileTxnLog implements TxnLog {
     private final boolean forceSync = !System.getProperty("zookeeper.forceSync", "yes").equals("no");
     ;
     long dbId;
-    private LinkedList<FileOutputStream> streamsToFlush =
-            new LinkedList<FileOutputStream>();
+    private LinkedList<FileOutputStream> streamsToFlush = new LinkedList<FileOutputStream>();
     long currentSize;
     File logFileWrite = null;
 
@@ -165,6 +163,7 @@ public class FileTxnLog implements TxnLog {
 
     /**
      * rollover the current log file to a new one.
+     * 创建一个新的Log文件, 将logStream置为null. 调用append方法时, 会先判断logStream是不是null, 如果是会新建新的日志文件
      * @throws IOException
      */
     public synchronized void rollLog() throws IOException {
@@ -207,31 +206,51 @@ public class FileTxnLog implements TxnLog {
             lastZxidSeen = hdr.getZxid();
         }
 
+        /**
+         * 当ZooKeeper服务器启动完成需要进行第一次事务日志的写入或者上一个事务日志写满的时候, 都会与事务日志文件处于断开状态.
+         * 因此, 在进行事务日志写入之前, ZooKeeper首先会判断FileTxnLog组件是否已经关联上一个可写的事务日志文件. 如果没有,
+         * 就会使用与该事务操作关联的ZXID作为后缀创建一个事务日志, 同时构建事务日志文件头信息(魔数、事务日志格式版本号、dbId),
+         * 并立即写入到这个事务日志文件. 同时, 将该文件流放入一个集合: streamToFlush. streamToFlush集合是ZooKeeper用来记录当前
+         * 需要强制进行数据落盘的文件流
+         */
         if (logStream == null) {
             if (LOG.isInfoEnabled()) {
                 LOG.info("Creating new log file: " + Util.makeLogName(hdr.getZxid()));
             }
 
+            // 创建一个新的事务日志文件
             logFileWrite = new File(logDir, Util.makeLogName(hdr.getZxid()));
             fos = new FileOutputStream(logFileWrite);
             logStream = new BufferedOutputStream(fos);
             oa = BinaryOutputArchive.getArchive(logStream);
+
+            // 创建事务文件头并写入文件中
             FileHeader fhdr = new FileHeader(TXNLOG_MAGIC, VERSION, dbId);
             fhdr.serialize(oa, "fileheader");
             // Make sure that the magic number is written before padding.
             logStream.flush();
             currentSize = fos.getChannel().position();
+
+            // 将该文件流放入streamsToFlush
             streamsToFlush.add(fos);
         }
+
+        // 确定事务日志文件是否需要扩容
         currentSize = padFile(fos.getChannel());
+
+        // 事务头和事务体序列化
         byte[] buf = Util.marshallTxnEntry(hdr, txn);
         if (buf == null || buf.length == 0) {
             throw new IOException("Faulty serialization for header " +
                     "and txn");
         }
+
+        // 用Adler32算法来生成CheckSum值, 确保事务日志文件的完整性和数据的正确性
         Checksum crc = makeChecksumAlgorithm();
         crc.update(buf, 0, buf.length);
         oa.writeLong(crc.getValue(), "txnEntryCRC");
+
+        // 写入事务日志文件流, ZK使用的是BufferedOutputStream, 因此写入的数据并不是真正立刻被写入到磁盘文件上
         Util.writeTxnBytes(oa, buf);
 
         return true;
@@ -356,8 +375,9 @@ public class FileTxnLog implements TxnLog {
     }
 
     /**
-     * commit the logs. make sure that evertyhing hits the
-     * disk
+     * commit the logs. make sure that evertyhing hits the disk
+     * 在append方法中只是将事务操作写入文件流中去了, 由于缓存原因, 无法实时的写入磁盘文件中,
+     * 在这里需要将缓存数据强制刷入磁盘
      */
     public synchronized void commit() throws IOException {
         if (logStream != null) {
@@ -370,8 +390,7 @@ public class FileTxnLog implements TxnLog {
 
                 log.getChannel().force(false);
 
-                long syncElapsedMS =
-                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startSyncNS);
+                long syncElapsedMS = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startSyncNS);
                 if (syncElapsedMS > fsyncWarningThresholdMS) {
                     LOG.warn("fsync-ing the write ahead log in "
                             + Thread.currentThread().getName()
@@ -642,8 +661,6 @@ public class FileTxnLog implements TxnLog {
 
         /**
          * Invoked to indicate that the input stream has been created.
-         * @param ia input archive
-         * @param is file input stream associated with the input archive.
          * @throws IOException
          **/
         protected InputArchive createInputArchive(File logFile) throws IOException {

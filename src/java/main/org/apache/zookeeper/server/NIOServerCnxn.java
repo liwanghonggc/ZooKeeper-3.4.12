@@ -54,6 +54,9 @@ import org.apache.zookeeper.server.util.OSMXBean;
 /**
  * This class handles communication with clients using NIO. There is one per
  * client, but only one thread doing the communication.
+ *
+ * 它负责维护每一个客户端连接, 客户端与服务器的所有通信都是通过NIOServerCnxn负责的, 它负责统一接收来自客户端的所有请求,
+ * 并将请求内容从底层网络IO中完整的读取出来
  */
 public class NIOServerCnxn extends ServerCnxn {
     static final Logger LOG = LoggerFactory.getLogger(NIOServerCnxn.class);
@@ -220,7 +223,10 @@ public class NIOServerCnxn extends ServerCnxn {
             incomingBuffer.flip();
 
             if (!initialized) {
-                // 如果是首次connectRequest
+                /**
+                 * 每个会话对应一个NIOServerCnxn实体, 对于每个请求ZooKeeper都会判断当前NIOServerCnxn是否已经被初始化
+                 * 如果尚未被初始化, 那么就可以确定该客户端请求一定是会话创建请求.
+                 */
                 System.out.println("时间: " + System.nanoTime() + ", 服务器收到客户端的ConnectRequest");
                 readConnectRequest();
             } else {

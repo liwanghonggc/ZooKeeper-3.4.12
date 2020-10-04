@@ -384,8 +384,7 @@ public class ClientCnxn {
     public ClientCnxn(String chrootPath, HostProvider hostProvider, int sessionTimeout, ZooKeeper zooKeeper,
                       ClientWatchManager watcher, ClientCnxnSocket clientCnxnSocket, boolean canBeReadOnly)
             throws IOException {
-        this(chrootPath, hostProvider, sessionTimeout, zooKeeper, watcher,
-                clientCnxnSocket, 0, new byte[16], canBeReadOnly);
+        this(chrootPath, hostProvider, sessionTimeout, zooKeeper, watcher, clientCnxnSocket, 0, new byte[16], canBeReadOnly);
     }
 
     /**
@@ -1412,7 +1411,10 @@ public class ClientCnxn {
             }
             readTimeout = negotiatedSessionTimeout * 2 / 3;
             connectTimeout = negotiatedSessionTimeout / hostProvider.size();
+
+            // 通知地址管理器HostProvider当前成功连接的服务器地址
             hostProvider.onConnected();
+
             sessionId = _sessionId;
             sessionPasswd = _sessionPasswd;
 
@@ -1429,6 +1431,13 @@ public class ClientCnxn {
             KeeperState eventState = (isRO) ? KeeperState.ConnectedReadOnly : KeeperState.SyncConnected;
             System.out.println("时间: " + System.nanoTime() + ", 连接建立完毕之后, 客户端向eventThread发送一个WatcherEvent: "
                     + new WatchedEvent(Watcher.Event.EventType.None, eventState, null));
+            /**
+             * 为了能够让上层应用感知到会话的成功创建, SendThread会生成一个事件SyncConnected-None, 代表客户端与服务器会话创建成功.
+             * 将该事件传递给EventThread线程, EventThread线程收到该事件之后, 会从ClientWatcherManager管理器中查询出对应的Watcher,
+             * 针对SyncConnected-None事件, 直接找出默认的Watcher, 然后将其放到EventThread的waitingThreads队列中去. EventThread
+             * 不断地从waitingEvents队列中取出待处理的Watcher对象, 然后直接调用该对象的process接口方法, 已达到触发Watcher的目的
+             *
+             */
             eventThread.queueEvent(new WatchedEvent(Watcher.Event.EventType.None, eventState, null));
         }
 

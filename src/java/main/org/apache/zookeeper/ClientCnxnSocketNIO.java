@@ -84,7 +84,10 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                     // 读取消息的长度
                     readLength();
                 } else if (!initialized) {
-                    // 获取连接结果
+                    /**
+                     * 在收到服务器响应之后, 会判断当前的客户端状态是否已经被初始化, 如果尚未初始化, 那么就认为该响应一定是
+                     * 会话创建请求的响应, 直接交由readConnectResult方法来处理该响应
+                     */
                     System.out.println("时间: " + System.nanoTime() + ", 客户端拿到服务器连接建立结果");
                     readConnectResult();
                     // 连接建立好后可读

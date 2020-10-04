@@ -35,9 +35,12 @@ import org.apache.zookeeper.server.ZooKeeperServerListener;
  * change the state of the system will come back as incoming committed requests,
  * so we need to match them up.
  *
- * CommitProcessor类的内部有一个LinkedList类型的queuedRequests队列,
- * queuedRequests队列的作用是,当CommitProcessor收到请求后,并不会立刻对该条请求进行处理,
- * 而是将其放在queuedRequests队列中.
+ * CommitProcessor类的内部有一个LinkedList类型的queuedRequests队列,queuedRequests队列的作用是,
+ * 当CommitProcessor收到请求后,并不会立刻对该条请求进行处理,而是将其放在queuedRequests队列中.
+ *
+ * 它是事务提交处理器. 对于非事务请求, 该处理器会直接将其交付给下一级处理器进行处理. 而对于事务请求,
+ * CommitProcessor处理器会等待集群内针对Proposal的投票直到该Proposal可被提交. 利用CommitProcessor,
+ * 每个服务器都可以很好地控制对事务请求的顺序处理
  */
 public class CommitProcessor extends ZooKeeperCriticalThread implements RequestProcessor {
     private static final Logger LOG = LoggerFactory.getLogger(CommitProcessor.class);
@@ -78,19 +81,30 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements RequestP
             while (!finished) {
                 int len = toProcess.size();
                 for (int i = 0; i < len; i++) {
+                    // FinalRequestProcessor
                     nextProcessor.processRequest(toProcess.get(i));
                 }
                 toProcess.clear();
+
                 synchronized (this) {
-                    if ((queuedRequests.size() == 0 || nextPending != null)
-                            && committedRequests.size() == 0) {
+                    /**
+                     * 如果从queuedRequests队列里面取出来的请求是一个事务请求, 那么就需要进行集群中各服务器之间的投票处理.
+                     * 同时需要将nextPending标记为当前请求. 作用是, 一方面是为了确保事务请求的顺序型. 另一方面是为了便于
+                     * CommitProcessor处理器检测当前集群中是否有正在进行事务请求的投票
+                     */
+                    if ((queuedRequests.size() == 0 || nextPending != null) && committedRequests.size() == 0) {
                         wait();
                         continue;
                     }
-                    // First check and see if the commit came in for the pending
-                    // request
-                    if ((queuedRequests.size() == 0 || nextPending != null)
-                            && committedRequests.size() > 0) {
+
+                    /**
+                     * First check and see if the commit came in for the pending request
+                     * 一旦发现committedRequests队列里面已经有可以提交的请求了, 那么Commit流程就会开始提交请求.
+                     * 在提交之前, 为了保证事务请求的顺序型, Commit流程还会对比之前标记的nextPending和committedRequests
+                     * 队列中的第一个请求是否一致. 如果检查通过, 那么Commit流程就会就会将请求放入toProcess队列中, 然后交付给下一个
+                     * 请求处理器:FinalRequestProcessor
+                     */
+                    if ((queuedRequests.size() == 0 || nextPending != null) && committedRequests.size() > 0) {
                         Request r = committedRequests.remove();
                         /*
                          * We match with nextPending so that we can move to the
@@ -109,15 +123,13 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements RequestP
                             toProcess.add(nextPending);
                             nextPending = null;
                         } else {
-                            // this request came from someone else so just
-                            // send the commit packet
+                            // this request came from someone else so just send the commit packet
                             toProcess.add(r);
                         }
                     }
                 }
 
-                // We haven't matched the pending requests, so go back to
-                // waiting
+                // We haven't matched the pending requests, so go back to waiting
                 if (nextPending != null) {
                     continue;
                 }
@@ -167,6 +179,10 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements RequestP
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Committing request:: " + request);
             }
+            /**
+             * 如果一个提议已经获得了过半机器的投票认可, 那么将会进入请求提交阶段
+             * ZooKeeper会将该请求放入commitedRequests队列中, 同时唤醒Commit流程
+             */
             committedRequests.add(request);
             notifyAll();
         }
@@ -177,7 +193,8 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements RequestP
         if (LOG.isDebugEnabled()) {
             LOG.debug("Processing request:: " + request);
         }
-        
+
+        // CommitProcessor收到请求后不会立即处理, 而是将其放入queuedRequest队列中
         if (!finished) {
             queuedRequests.add(request);
             notifyAll();

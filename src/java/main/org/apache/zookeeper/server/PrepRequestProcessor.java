@@ -331,7 +331,14 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     protected void pRequest2Txn(int type, long zxid, Request request, Record record, boolean deserialize)
         throws KeeperException, IOException, RequestProcessorException
     {
-        // 事务处理给hdr赋值
+        /**
+         * 创建事务请求头. 对于事务请求, ZooKeeper会为其创建事务请求头. 请求事务头是每一个ZooKeeper事务请求中非常重要的一部分.
+         * 服务端的后续的请求处理都是基于该事务请求头来识别当前请求是否是事务请求. 请求事务头包含了一个事务请求最基本的信息, 包含
+         * sessionID、ZXID、CXID和请求类型
+         *
+         * request.cxid: 对于创建会话请求来说, 传的是0
+         * zxid: 是一个递增的数值
+         */
         request.hdr = new TxnHeader(request.sessionId, request.cxid, zxid, Time.currentWallTime(), type);
 
         switch (type) {
@@ -476,8 +483,15 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.createSession:
                 request.request.rewind();
                 int to = request.request.getInt();
+
+                // 创建事务请求体
                 request.txn = new CreateSessionTxn(to);
                 request.request.rewind();
+
+                /**
+                 * 处理会话注册与激活. 此处进行会话注册与激活的目的是处理由非Leader服务器转发过来的会话创建请求.
+                 * 在这种情况下, 其实尚未在Leader的SessionTracker中进行会话的注册. 因此需要进行一次会话注册与激活
+                 */
                 zks.sessionTracker.addSession(request.sessionId, to);
                 zks.setOwner(request.sessionId, request.getOwner());
                 break;
@@ -704,8 +718,11 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             }
         }
         request.zxid = zks.getZxid();
-        
-        // PrepRequestProcessor预处理器执行完工作后,就轮到SyncRequestProcessor上场了
+
+        /**
+         * 1) 集群模式下的Leader, PrepRequestProcessor -> ProposalRequestProcessor
+         *
+         */
         nextProcessor.processRequest(request);
     }
 

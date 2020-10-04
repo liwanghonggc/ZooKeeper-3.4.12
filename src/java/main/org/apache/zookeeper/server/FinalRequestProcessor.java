@@ -79,6 +79,8 @@ import org.apache.zookeeper.OpResult.ErrorResult;
  * 该处理器的作用是检查请求的有效性.而所谓的有效性就是指当前ZooKeeper服务所处理的请求是否已经处理过了,
  * 如果处理过了,FinalRequestProcessor处理器就会将该条请求删除. 如果不这样操作,就会重复处理会话请求,
  * 这样就造成不必要的资源浪费
+ *
+ * 该处理器还会负责将事务应用到内存数据库中去
  */
 public class FinalRequestProcessor implements RequestProcessor {
     private static final Logger LOG = LoggerFactory.getLogger(FinalRequestProcessor.class);
@@ -103,14 +105,14 @@ public class FinalRequestProcessor implements RequestProcessor {
         }
         ProcessTxnResult rc = null;
         synchronized (zks.outstandingChanges) {
-            // 事务请求才不是空
-            // 刚放进去的节点zxid应该和request.zxid一致
+            /**
+             * FinalRequestProcessor首先会检查outstandingChanges队列请求的有效性, 如果发现这些请求已经落后于当前正在处理的请求
+             * 那么直接从outstandingChanges队列中移除.
+             */
             while (!zks.outstandingChanges.isEmpty() && zks.outstandingChanges.get(0).zxid <= request.zxid) {
                 ChangeRecord cr = zks.outstandingChanges.remove(0);
                 if (cr.zxid < request.zxid) {
-                    LOG.warn("Zxid outstanding "
-                            + cr.zxid
-                            + " is less than current " + request.zxid);
+                    LOG.warn("Zxid outstanding " + cr.zxid + " is less than current " + request.zxid);
                 }
                 if (zks.outstandingChangesForPath.get(cr.path) == cr) {
                     // 相等才移除
@@ -121,9 +123,18 @@ public class FinalRequestProcessor implements RequestProcessor {
                TxnHeader hdr = request.hdr;
                Record txn = request.txn;
 
+                /**
+                 * 事务应用. 在之前的请求处理逻辑中, 仅仅是将该事务请求记录到了事务日志中去. 而内存数据库中的状态尚未变更. 因此, 在
+                 * 这个环节, 需要将事务变更应用到内存数据库中去.
+                 */
                rc = zks.processTxn(hdr, txn);
             }
-            // do not add non quorum packets to the queue.
+            /**
+             * do not add non quorum packets to the queue.
+             * Session创建请求这里返回true
+             * 一旦完成事务请求的内存数据库应用, 就可以将该请求放入commitProposal队列中了. commitProposal队列用来保存最近被提交的
+             * 事务请求, 以便集群间的机器进行数据的快速同步.
+             */
             if (Request.isQuorum(request.type)) {
                 zks.getZKDatabase().addCommittedProposal(request);
             }
@@ -181,6 +192,9 @@ public class FinalRequestProcessor implements RequestProcessor {
                 return;
             }
             case OpCode.createSession: {
+                /**
+                 * 会话响应. 先进行一些统计处理
+                 */
                 zks.serverStats().updateLatency(request.createTime);
 
                 lastOp = "SESS";
